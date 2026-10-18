@@ -80,6 +80,15 @@ RAZORPAY_WEBHOOK_SECRET = env("RAZORPAY_WEBHOOK_SECRET")
 # "Continue with Google" for customers: OAuth Client ID from Google Cloud Console (not secret)
 GOOGLE_CLIENT_ID = env("GOOGLE_CLIENT_ID")
 
+# "Continue with Google" for customers (optional)
+GOOGLE_CLIENT_ID = env("GOOGLE_CLIENT_ID")
+
+# Email for login codes and order updates (Brevo HTTPS API)
+BREVO_API_KEY = env("BREVO_API_KEY")
+MAIL_FROM_EMAIL = env("MAIL_FROM_EMAIL")
+MAIL_FROM_NAME = env("MAIL_FROM_NAME")
+OTP_MINUTES = int(env("OTP_MINUTES", "10"))
+
 # Optional AI narrative (statistical analytics work without it)
 ANTHROPIC_API_KEY = env("ANTHROPIC_API_KEY")
 ANTHROPIC_MODEL = env("ANTHROPIC_MODEL", "claude-sonnet-4-5")
