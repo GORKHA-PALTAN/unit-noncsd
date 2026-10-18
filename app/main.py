@@ -43,6 +43,9 @@ class SecurityHeaders(BaseHTTPMiddleware):
         resp.headers.setdefault("Content-Security-Policy", CSP)
         if request.url.path.startswith("/api/"):
             resp.headers.setdefault("Cache-Control", "no-store")
+        elif request.url.path.startswith("/static/"):
+            # Always check for a newer file (cheap 304 when unchanged) so updates show up without a hard refresh
+            resp.headers.setdefault("Cache-Control", "no-cache")
         if request.url.path.startswith("/uploads/") and request.url.path.endswith(".svg"):
             resp.headers["Content-Security-Policy"] = "default-src 'none'; style-src 'unsafe-inline'"
         return resp
