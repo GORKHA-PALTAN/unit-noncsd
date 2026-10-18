@@ -34,7 +34,7 @@
   ];
   const TITLES = Object.fromEntries(NAV.flatMap((g) => g[1].map((n) => [n[0], n[1]])));
   const can = (p) => !p || A.perms.has(p);
-  const PM = { cod: "Cash on Delivery", razorpay: "Razorpay", sandbox: "Sandbox (test)" };
+  const PM = { cod: "Cash on Delivery", razorpay: "Razorpay", sandbox: "Sandbox (test)", upi: "UPI (direct)" };
   const RANGES = [["today", "Today"], ["yesterday", "Yesterday"], ["7d", "7 days"], ["30d", "30 days"], ["month", "This month"], ["prev_month", "Last month"], ["custom", "Custom"]];
 
   // ------------------------------------------------------------------ boot & auth
@@ -84,7 +84,7 @@
         const vis = items.filter((n) => can(n[2]));
         return vis.length ? `<div class="grp">${g}</div>${vis.map((n) => `<a href="#/${n[0]}" data-nav="${n[0]}">${n[3]}<span>${n[1]}</span>${["orders", "returns", "inventory"].includes(n[0]) ? `<span class="n" data-badge="${n[0]}" hidden></span>` : ""}</a>`).join("")}` : "";
       }).join("")}</nav>
-      <div class="side-foot"><a href="/" target="_blank" rel="noopener">↗ View store</a><a href="#" id="chpw">Change password</a><a href="#" id="logout">Sign out</a></div></aside>
+      <div class="side-foot"><a href="/" target="_blank" rel="noopener">↗ View store</a><a href="#" id="chpw">Change password</a><a href="#" id="logout">Sign out</a><div class="side-credit">Created &amp; managed by <b>Surjeet Choudhary</b></div></div></aside>
       <div class="mainc"><header class="topbar"><button class="icon-btn menu-toggle" id="mt" aria-label="Menu">☰</button><h1 id="ttl">Dashboard</h1>
         <div class="who"><span>${esc(A.me.name)} · ${esc(A.me.role)}</span><div class="av">${esc(A.me.name[0])}</div></div></header>
         <div class="content" id="content"></div></div></div>`;
@@ -304,7 +304,7 @@
     el.innerHTML = `<div class="toolbar"><input type="search" class="inp" id="oq" placeholder="Search order no., customer, buyer code, phone" value="${esc(st.q)}">
       <select id="ost" aria-label="Status"><option value="">All statuses</option><optgroup label="Groups"><option value="open">Open orders</option><option value="to_process">To process</option><option value="shipping">In delivery</option><option value="returns">Returns & refunds</option></optgroup><optgroup label="Status" id="ost-list"></optgroup></select>
       <select id="opay" aria-label="Payment"><option value="">Any payment</option><option value="paid">Paid</option><option value="pending">Pending / COD due</option><option value="failed">Failed</option><option value="refunded">Refunded</option></select>
-      <select id="ometh" aria-label="Method"><option value="">Any method</option><option value="cod">Cash on Delivery</option><option value="razorpay">Razorpay</option><option value="sandbox">Sandbox</option></select>
+      <select id="ometh" aria-label="Method"><option value="">Any method</option><option value="cod">Cash on Delivery</option><option value="razorpay">Razorpay</option><option value="upi">UPI (direct)</option><option value="sandbox">Sandbox</option></select>
       <span class="grow"></span>${can("reports") ? `<button class="btn btn-sm" id="oexp">⬇ Export CSV</button>` : ""}</div><div id="olist"></div>`;
     const load = async () => {
       const box = el.querySelector("#olist");
@@ -361,7 +361,12 @@
             <div id="ref-box" hidden><label class="fld"><span>Refund reference (UTR / transaction ID)</span><input id="nref"></label></div>
             <div id="restock-box" hidden><label class="chk"><input type="checkbox" id="nrestock" checked> Returned items are resaleable (add back to stock)</label></div>
             <button class="btn btn-primary btn-block" id="go-st">Update status</button>` : `<div class="empty-sm">No further status changes for this order.</div>`}
-          ${o.status === "payment_pending" ? `<div class="est-note">Online payment not yet verified. Payment Confirmed is set automatically only after the gateway verifies it — it cannot be set by hand.</div>` : ""}
+          ${o.status === "payment_pending" && o.payment_method !== "upi" ? `<div class="est-note">Online payment not yet verified. Payment Confirmed is set automatically only after the gateway verifies it — it cannot be set by hand.</div>` : ""}
+          ${o.upi && o.upi.status === "submitted" && o.payment_status !== "paid" ? `<div class="upi-box"><h3>UPI payment to confirm</h3>
+            <dl class="kv"><dt>Amount</dt><dd><b>${fmt.inr(o.grand_total)}</b></dd><dt>Txn ID / UTR</dt><dd><b>${esc(o.upi.utr)}</b></dd><dt>Submitted</dt><dd>${fmt.datetime(o.upi.created_at)}</dd></dl>
+            <div class="est-note">Open your bank or UPI app and check that ${fmt.inr(o.grand_total)} arrived with this transaction ID before confirming.</div>
+            <div style="display:flex;gap:8px;margin-top:8px"><button class="btn btn-primary" id="upi-ok" style="flex:1">✓ Confirm payment</button><button class="btn btn-danger" id="upi-no" style="flex:1">Reject</button></div></div>` : ""}
+          ${o.payment_method === "upi" && o.status === "payment_pending" && !(o.upi && o.upi.status === "submitted") ? `<div class="est-note">Waiting for the customer to pay by UPI and submit the transaction ID.</div>` : ""}
           ${o.payment_method === "cod" && o.payment_status === "pending" && ["out_for_delivery", "delivered"].includes(o.status) ? `<button class="btn btn-dark btn-block" id="cash" style="margin-top:10px">Record cash collected · ${fmt.inr(o.grand_total)}</button>` : ""}
         </div>
         <div class="card" style="margin-bottom:14px"><h2>Shipment</h2>
@@ -388,6 +393,17 @@
         } catch (e) { toast(e.message, "err"); }
       };
     }
+    const upiOk = el.querySelector("#upi-ok");
+    if (upiOk) upiOk.onclick = async () => {
+      if (!(await confirmDialog("Confirm UPI payment", `Have you checked that ${fmt.inr(o.grand_total)} with Txn ID ${o.upi.utr} arrived in your account? The order will move to Payment Confirmed.`, { confirmLabel: "Yes, payment received" }))) return;
+      try { await api("POST", `/api/admin/orders/${id}/upi-review`, { action: "confirm" }); toast("UPI payment confirmed"); orderDetail(el, id); } catch (e) { toast(e.message, "err"); }
+    };
+    const upiNo = el.querySelector("#upi-no");
+    if (upiNo) upiNo.onclick = async () => {
+      const note = await promptDialog("Reject UPI payment", "Reason shown to the customer", { confirmLabel: "Reject payment", placeholder: "e.g. No payment found with this transaction ID" });
+      if (note === null || note === undefined || note === false) return;
+      try { await api("POST", `/api/admin/orders/${id}/upi-review`, { action: "reject", note }); toast("Payment rejected — customer notified"); orderDetail(el, id); } catch (e) { toast(e.message, "err"); }
+    };
     const cash = el.querySelector("#cash");
     if (cash) cash.onclick = async () => {
       if (!(await confirmDialog("Record cash collection", `Confirm that ${fmt.inr(o.grand_total)} cash was collected for ${o.order_no}?`, { confirmLabel: "Cash collected" }))) return;
@@ -404,7 +420,7 @@
         <h2>Packing slip — ${esc(o.order_no)}</h2><p>${fmt.datetime(o.created_at)} · ${esc(PM[o.payment_method] || "")} · ${o.payment_status === "paid" ? "PAID" : o.payment_method === "cod" ? "COLLECT " + fmt.inr(o.grand_total) : "UNPAID"}</p>
         <p><b>${esc(o.ship_name)}</b><br>${esc(a.line1)} ${esc(a.line2 || "")}<br>${esc(a.city)}, ${esc(a.state)} ${esc(a.pincode)}<br>${esc(o.ship_phone)}${o.buyer_code ? "<br>Buyer code: " + esc(o.buyer_code) : ""}</p>
         <table><tr><th>Item</th><th>SKU</th><th>Qty</th></tr>${o.items.map((i) => `<tr><td>${esc(i.name)}</td><td>${esc(i.sku || "")}</td><td>${i.qty}</td></tr>`).join("")}</table>
-        <p><b>Total: ${fmt.inr(o.grand_total)}</b></p></body></html>`);
+        <p><b>Total: ${fmt.inr(o.grand_total)}</b></p><p style="margin-top:32px;font-size:12px;color:#666;border-top:1px solid #ddd;padding-top:8px">Created &amp; managed by <b>Surjeet Choudhary</b></p></body></html>`);
       w.document.close(); w.focus(); w.print();
     };
   }
@@ -1017,6 +1033,9 @@
       <div class="card c6"><h2>Store</h2><div class="sub">Shown to customers</div>${t("store_name", "Store name")}${t("tagline", "Tagline")}<div class="row2">${t("support_email", "Support email")}${t("support_phone", "Support phone")}</div></div>
       <div class="card c6"><h2>Payments</h2><div class="sub">Secret keys live in the server's .env file — never here</div>
         ${b("cod_enabled", "Cash on Delivery")}${n("cod_max_amount", "COD maximum order value (₹)")}
+        ${b("upi_enabled", "Direct UPI to my UPI ID (you confirm each payment)")}
+        <div class="row2">${t("upi_id", "Your UPI ID", 'placeholder="yourname@okhdfcbank"')}${t("upi_payee_name", "Name shown to payer", 'placeholder="e.g. Unit Non-CSD Store"')}</div>
+        <div class="est-note" style="margin:-4px 0 10px">Customers pay to this UPI ID and enter the transaction ID. Check your bank/UPI app, then press <b>Confirm payment</b> on the order.</div>
         ${b("razorpay_enabled", "Razorpay (UPI, cards, netbanking)")}<div class="est-note" style="margin:-4px 0 10px">${esc(d.integrations.razorpay)}</div>
         ${b("sandbox_enabled", "Sandbox test payments (turn OFF before going live)")}${n("payment_expiry_minutes", "Unpaid online orders auto-cancel after (minutes)", 'min="5" max="1440"')}</div>
       <div class="card c6"><h2>Tax & ordering</h2>${b("prices_include_tax", "Selling prices include GST")}<div class="row2">${n("default_tax_rate", "Default GST %")}${n("max_qty_per_order", "Max units of one item per order")}</div>

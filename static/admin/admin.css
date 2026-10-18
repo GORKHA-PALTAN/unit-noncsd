@@ -134,3 +134,9 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 14px; }
   .qr-card { break-inside: avoid; border: 2px solid #000; }
   .qr-head { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
+
+.side-credit { margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,.08); font-size: 12px; opacity: .75; line-height: 1.5; }
+.side-credit b { font-weight: 600; white-space: nowrap; }
+
+.upi-box { margin-top: 12px; padding: 12px; border: 1px solid #f0c36d; background: #fffaf0; border-radius: 10px; }
+.upi-box h3 { margin: 0 0 6px; font-size: 16px; }
