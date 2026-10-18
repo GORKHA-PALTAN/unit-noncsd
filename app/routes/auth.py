@@ -213,10 +213,15 @@ def otp_request(ctx):
     if mailer.configured():
         subject, body, html = _otp_email(code)
         if not mailer.send_email(email, subject, body, html):
+            print("[login code] email failed:", mailer.LAST_ERROR[0])
             raise ApiError(502, "We couldn't send the email right now. Please try again in a minute.")
+    elif config.PUBLIC_URL:
+        # Online store without an email service: don't pretend a code was sent
+        print(f"[login code] {email}: {code}  (no email service set up: add GMAIL_SCRIPT_URL or BREVO_API_KEY)")
+        raise ApiError(503, "Sign-in by email code isn't available yet. Please use another sign-in option or contact the store.")
     else:
-        # No email service yet (local testing): the code appears in the server window/log only.
-        print(f"[login code] {email}: {code}  (set BREVO_API_KEY to email codes to customers)")
+        # Local testing without an email service: the code appears in the server window only.
+        print(f"[login code] {email}: {code}  (set GMAIL_SCRIPT_URL or BREVO_API_KEY to email codes to customers)")
     return {"sent": True, "minutes": config.OTP_MINUTES}
 
 
