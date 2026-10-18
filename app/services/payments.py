@@ -43,12 +43,14 @@ def start_payment(order, user, method=None):
     if order["status"] != "payment_pending" or order["payment_status"] not in ("pending", "failed"):
         raise ApiError(400, "This order is not awaiting payment.")
     method = method or order["payment_method"]
-    if method not in ("razorpay", "sandbox"):
+    if method not in ("razorpay", "sandbox", "upi"):
         raise ApiError(400, "Choose an online payment method.")
     ok, msg = payment_method_allowed(method, order["grand_total"])
     if not ok:
         raise ApiError(400, msg)
     amount = float(order["grand_total"])
+    if method == "upi":
+        return _start_upi(order, amount)
     if method == "razorpay":
         rzp = _rzp_request("POST", "/orders", {"amount": int(round(amount * 100)), "currency": "INR",
                                                "receipt": order["order_no"], "notes": {"order_no": order["order_no"]}})
@@ -164,3 +166,101 @@ def refund_via_gateway(order):
     r = _rzp_request("POST", f"/payments/{pay['provider_payment_id']}/refund",
                      {"amount": int(round(float(order["grand_total"]) * 100))})
     return r.get("id")
+
+
+# ---------------------------------------------------------------- direct UPI (manual confirmation)
+UTR_RE = __import__("re").compile(r"^[A-Za-z0-9]{10,35}$")
+
+
+def upi_link(order, amount=None):
+    from urllib.parse import quote
+    s = get_settings()
+    amount = float(order["grand_total"] if amount is None else amount)
+    payee = (s.get("upi_payee_name") or s["store_name"])[:50]
+    # Only the basic fields: merchant-only fields (tr, mc) make some apps refuse payments to personal UPI IDs
+    parts = {"pa": s["upi_id"], "pn": payee, "am": f"{amount:.2f}", "cu": "INR", "tn": f"Order {order['order_no']}"}
+    return "upi://pay?" + "&".join(f"{k}={quote(str(v), safe='@.')}" for k, v in parts.items())
+
+
+def _start_upi(order, amount):
+    db = get_db()
+    s = get_settings()
+    existing = db.one("SELECT id FROM payments WHERE order_id=? AND method='upi' AND status IN ('created','failed') ORDER BY id DESC LIMIT 1",
+                      (order["id"],))
+    if existing:
+        db.run("UPDATE payments SET status='created', error=NULL, provider_payment_id=NULL WHERE id=?", (existing["id"],))
+        pid = existing["id"]
+    else:
+        pid = db.insert("payments", {"order_id": order["id"], "method": "upi", "provider_order_id": f"UPI-{order['order_no']}",
+                                     "amount": amount, "status": "created", "created_at": now_iso()})
+    db.run("UPDATE orders SET payment_method='upi' WHERE id=?", (order["id"],))
+    return {"method": "upi", "payment_id": pid, "upi_id": s["upi_id"], "payee": s.get("upi_payee_name") or s["store_name"],
+            "amount": amount, "order_no": order["order_no"], "link": upi_link(order, amount),
+            "expires_at": order["payment_expires_at"]}
+
+
+def submit_upi(order, user, utr):
+    """Customer reports the UPI transaction reference; the store confirms it by checking its bank/UPI app."""
+    from .orders import add_event
+    db = get_db()
+    utr = (utr or "").strip().replace(" ", "")
+    if order["payment_method"] != "upi":
+        raise ApiError(400, "This order is not set to UPI payment.")
+    if order["status"] != "payment_pending" or order["payment_status"] not in ("pending", "failed"):
+        raise ApiError(400, "This order is not awaiting payment.")
+    if not UTR_RE.match(utr):
+        raise ApiError(400, "Enter the UPI transaction ID / UTR exactly as shown in your UPI app (usually 12 digits).")
+    with transaction(db):
+        dup = db.one("SELECT p.order_id FROM payments p WHERE p.method='upi' AND p.provider_payment_id=? AND p.status IN ('submitted','verified') "
+                     "AND p.order_id<>?", (utr, order["id"]))
+        if dup:
+            raise ApiError(409, "This transaction ID has already been used for another order. Please check it.")
+        pay = db.one("SELECT * FROM payments WHERE order_id=? AND method='upi' ORDER BY id DESC LIMIT 1", (order["id"],))
+        if pay and pay["status"] == "submitted":
+            raise ApiError(400, "You have already submitted a transaction ID. The store will confirm it shortly.")
+        if not pay or pay["status"] not in ("created", "failed"):
+            pid = db.insert("payments", {"order_id": order["id"], "method": "upi", "provider_order_id": f"UPI-{order['order_no']}",
+                                         "amount": order["grand_total"], "status": "created", "created_at": now_iso()})
+        else:
+            pid = pay["id"]
+        db.run("UPDATE payments SET status='submitted', provider_payment_id=?, error=NULL, created_at=? WHERE id=?", (utr, now_iso(), pid))
+        # Stop the auto-cancel timer while the store checks the payment
+        db.run("UPDATE orders SET payment_expires_at=NULL, payment_status='pending', updated_at=? WHERE id=?", (now_iso(), order["id"]))
+        add_event(db, order["id"], "payment_pending", f"UPI payment submitted (Txn ID {utr}) — waiting for the store to confirm", user["id"])
+    for staff in db.all("SELECT id FROM users WHERE role='owner' AND status='active'"):
+        notify(staff["id"], f"UPI payment to confirm: {order['order_no']}",
+               f"₹{order['grand_total']} · Txn ID {utr}. Check your UPI/bank app, then confirm or reject on the order page.",
+               f"#/orders/{order['id']}", email=False)
+    return db.one("SELECT * FROM orders WHERE id=?", (order["id"],))
+
+
+def review_upi(order, staff, action, note=None):
+    """Owner/staff confirm (after seeing the money in their account) or reject a submitted UPI payment."""
+    from .orders import add_event
+    db = get_db()
+    s = get_settings()
+    with transaction(db):
+        pay = db.one("SELECT * FROM payments WHERE order_id=? AND method='upi' AND status='submitted' ORDER BY id DESC LIMIT 1",
+                     (order["id"],))
+        if not pay:
+            raise ApiError(400, "There is no UPI payment waiting for confirmation on this order.")
+        order = db.one("SELECT * FROM orders WHERE id=?", (order["id"],))
+        if action == "confirm":
+            db.run("UPDATE payments SET status='verified', verified_at=? WHERE id=?", (now_iso(), pay["id"]))
+            order = mark_paid(db, order, f"UPI payment confirmed by the store (Txn ID {pay['provider_payment_id']})")
+            msg = (f"Payment received for {order['order_no']}", f"₹{order['grand_total']} via UPI — thank you!")
+        elif action == "reject":
+            reason = (note or "").strip()[:200] or "The payment was not found in the store's account."
+            from datetime import timedelta
+            from ..db import iso, now_utc
+            db.run("UPDATE payments SET status='failed', error=? WHERE id=?", (reason, pay["id"]))
+            exp = iso(now_utc() + timedelta(minutes=int(s["payment_expiry_minutes"]))) if order["status"] == "payment_pending" else None
+            db.run("UPDATE orders SET payment_status='failed', payment_expires_at=?, updated_at=? WHERE id=?", (exp, now_iso(), order["id"]))
+            add_event(db, order["id"], "payment_pending", f"UPI payment could not be confirmed: {reason} Please check and submit the correct transaction ID, or pay again.",
+                      staff["id"])
+            order = db.one("SELECT * FROM orders WHERE id=?", (order["id"],))
+            msg = (f"Payment not confirmed for {order['order_no']}", reason + " Open your order to fix it.")
+        else:
+            raise ApiError(400, "Unknown action.")
+    notify(order["user_id"], msg[0], msg[1], f"#/order/{order['order_no']}")
+    return order

@@ -54,6 +54,7 @@ TRANSITIONS = {
 }
 SHIPPED = {"dispatched", "in_transit", "out_for_delivery", "delivered", "delivery_failed",
            "return_requested", "return_in_progress", "returned"}
+ONLINE_METHODS = ("razorpay", "sandbox", "upi")
 OPEN_STATUSES = {"placed", "payment_pending", "payment_confirmed", "confirmed", "processing", "packed",
                  "dispatched", "in_transit", "out_for_delivery", "cancel_requested", "delivery_failed"}
 # Orders that count as real sales (excludes unpaid online orders and cancellations)
@@ -170,6 +171,10 @@ def payment_method_allowed(method, amount):
         if not s["sandbox_enabled"]:
             return False, "Test payments are disabled."
         return True, None
+    if method == "upi":
+        if not (s.get("upi_enabled") and s.get("upi_id")):
+            return False, "UPI payment is not available right now."
+        return True, None
     return False, "Choose a payment method."
 
 
@@ -208,7 +213,7 @@ def place_order(user, address_id, delivery_code, payment_method, coupon_code, ex
         if user.get("buyer_id"):
             buyer = db.one("SELECT * FROM buyers WHERE id=? AND active=1", (user["buyer_id"],))
         t = now_iso()
-        online = payment_method in ("razorpay", "sandbox")
+        online = payment_method in ONLINE_METHODS
         status = "payment_pending" if online else "placed"
         order_id = db.insert("orders", {
             "order_no": _order_no(db), "user_id": user["id"],
@@ -421,8 +426,15 @@ def order_actions(order):
         "can_cancel": order["status"] in CUSTOMER_CANCEL_DIRECT | CUSTOMER_CANCEL_REQUEST,
         "cancel_needs_approval": order["status"] in CUSTOMER_CANCEL_REQUEST,
         "can_return": can_return,
-        "can_pay": order["status"] == "payment_pending" and order["payment_status"] in ("pending", "failed"),
+        "can_pay": order["status"] == "payment_pending" and order["payment_status"] in ("pending", "failed")
+                   and not _upi_submitted(order),
     }
+
+
+def _upi_submitted(order):
+    if order["payment_method"] != "upi":
+        return False
+    return bool(get_db().one("SELECT id FROM payments WHERE order_id=? AND method='upi' AND status='submitted'", (order["id"],)))
 
 
 def timeline(db, order, include_hidden=False):
@@ -467,6 +479,10 @@ def serialize_order(db, order, admin=False):
     out["requests"] = db.all("SELECT id, kind, reason, status, resolution_note, created_at, resolved_at FROM return_requests "
                              "WHERE order_id=? ORDER BY id", (order["id"],))
     out["actions"] = order_actions(order)
+    if order["payment_method"] == "upi":
+        p = db.one("SELECT provider_payment_id AS utr, status, error, created_at FROM payments WHERE order_id=? AND method='upi' "
+                   "ORDER BY id DESC LIMIT 1", (order["id"],))
+        out["upi"] = p
     return out
 
 
