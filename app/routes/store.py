@@ -48,6 +48,7 @@ def meta(ctx):
         "store": {k: s[k] for k in ("store_name", "tagline", "announcement", "support_email", "support_phone",
                                     "return_window_days", "policy_returns", "policy_shipping", "policy_privacy")},
         "departments": depts, "categories": tree,
+        "google_client_id": config.GOOGLE_CLIENT_ID,
         "payments": {
             "cod": {"enabled": bool(s["cod_enabled"]), "max": s["cod_max_amount"]},
             "razorpay": {"enabled": bool(s["razorpay_enabled"] and config.razorpay_configured()),

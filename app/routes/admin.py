@@ -3,6 +3,7 @@ import csv
 import io
 import re
 import secrets
+from ..services import mailer as _mailer
 from datetime import date
 
 from starlette.responses import Response
@@ -1120,7 +1121,7 @@ def settings(ctx):
                 "razorpay": "Configured" if config.razorpay_configured() else "Not configured — add RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET to .env",
                 "razorpay_webhook": "Configured" if config.RAZORPAY_WEBHOOK_SECRET else "Not configured (optional)",
                 "ai_narrative": "Configured" if config.ANTHROPIC_API_KEY else "Not configured (optional) — statistical analytics active",
-                "email": "Configured" if config.SMTP_HOST else "Not configured — in-app notifications only",
+                "email": f"Configured ({_mailer.provider_name()})" if _mailer.configured() else "Not configured — in-app notifications only; login codes are printed in the server log",
                 "courier_api": "Not configured — enter courier & tracking numbers manually on each order",
             },
             "sample_counts": {
