@@ -58,7 +58,8 @@
       <div><h4>My account</h4><a href="#/orders">Orders & tracking</a><a href="#/wishlist">Wishlist</a><a href="#/cart">Cart</a><a href="#/account">Profile & addresses</a></div>
       <div><h4>Policies</h4><a href="#/policy/returns">Returns & refunds</a><a href="#/policy/shipping">Shipping</a><a href="#/policy/privacy">Privacy</a></div>
       <div><h4>Customer support</h4><a href="mailto:${esc(st.support_email)}">${esc(st.support_email)}</a><a href="tel:${esc(st.support_phone.replace(/\s/g, ""))}">${esc(st.support_phone)}</a><a href="/admin">Staff sign-in</a></div></div>
-      <div class="fine">© ${new Date().getFullYear()} ${esc(st.store_name)}. Products marked SAMPLE are demonstration data and are not real inventory.</div>`;
+      <div class="fine">© ${new Date().getFullYear()} ${esc(st.store_name)}. Products marked SAMPLE are demonstration data and are not real inventory.</div>
+      <div class="fine foot-credit">Created &amp; managed by <b>Surjeet Choudhary</b></div>`;
   }
 
   function bindChrome() {
@@ -106,7 +107,8 @@
       <div class="drawer-links">
         <a href="#/orders">📦 My orders</a><a href="#/wishlist">♡ Wishlist</a><a href="#/notifications">🔔 Notifications</a>
         <a href="#/policy/returns">↩︎ Returns & refunds</a>${u ? `<button id="dr-logout">⎋ Sign out</button>` : `<a href="#/login">→ Sign in</a>`}
-        ${u && u.role !== "customer" ? `<a href="/admin">⚙ Admin dashboard</a>` : ""}</div>`;
+        ${u && u.role !== "customer" ? `<a href="/admin">⚙ Admin dashboard</a>` : ""}</div>
+      <div class="credit">Created &amp; managed by <b>Surjeet Choudhary</b></div>`;
     document.querySelectorAll(".acc-h").forEach((h) => (h.onclick = () => {
       const open = h.getAttribute("aria-expanded") === "true";
       h.setAttribute("aria-expanded", !open);

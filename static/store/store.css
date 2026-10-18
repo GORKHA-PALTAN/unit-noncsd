@@ -246,3 +246,7 @@ body { padding-bottom: calc(72px + env(safe-area-inset-bottom)); background: #ff
 }
 
 body.drawer-open { overflow: hidden; }
+
+.credit { padding: 16px 18px 24px; font-size: 13px; color: var(--ink-3); text-align: center; line-height: 1.6; }
+.credit b { color: inherit; font-weight: 600; }
+.foot-credit { margin-top: 8px; color: #fff; opacity: .9; font-size: 14px; }
