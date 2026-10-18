@@ -54,6 +54,7 @@ def meta(ctx):
             "razorpay": {"enabled": bool(s["razorpay_enabled"] and config.razorpay_configured()),
                          "configured": config.razorpay_configured()},
             "sandbox": {"enabled": bool(s["sandbox_enabled"])},
+            "upi": {"enabled": bool(s.get("upi_enabled") and s.get("upi_id"))},
         },
     }
 
@@ -407,12 +408,12 @@ def checkout_quote(ctx):
 def create_order(ctx):
     aid = int(num(ctx.get("address_id"), "Delivery address", integer=True))
     pm = ctx.get("payment_method")
-    if pm not in ("cod", "razorpay", "sandbox"):
+    if pm not in ("cod", "razorpay", "sandbox", "upi"):
         raise ApiError(400, "Choose a payment method.")
     order = osvc.place_order(ctx.user, aid, ctx.get("delivery_method"), pm, (ctx.get("coupon") or "").strip() or None,
                              ctx.get("expected_total"))
     out = {"order_no": order["order_no"], "status": order["status"], "grand_total": order["grand_total"]}
-    if pm in ("razorpay", "sandbox"):
+    if pm in osvc.ONLINE_METHODS:
         out["payment"] = psvc.start_payment(order, ctx.user, pm)
     return out
 
@@ -472,6 +473,12 @@ def rzp_verify(ctx):
     o, p, s = ctx.require("razorpay_order_id", "razorpay_payment_id", "razorpay_signature")
     order = psvc.verify_razorpay(ctx.user, o, p, s)
     return {"ok": True, "order_no": order["order_no"]}
+
+
+@api("POST", "/api/orders/{no}/upi-submit", auth="customer", limit="pay")
+def upi_submit(ctx):
+    order = psvc.submit_upi(_own_order(ctx), ctx.user, ctx.get("utr"))
+    return osvc.serialize_order(get_db(), order)
 
 
 @api("POST", "/api/payments/sandbox/complete", auth="customer", limit="pay")

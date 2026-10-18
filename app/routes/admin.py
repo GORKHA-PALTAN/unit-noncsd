@@ -571,6 +571,19 @@ def collect_cash(ctx):
     return osvc.serialize_order(db, db.one("SELECT * FROM orders WHERE id=?", (o["id"],)), admin=True)
 
 
+@api("POST", "/api/admin/orders/{oid:int}/upi-review", auth="admin", perm="orders")
+def upi_review(ctx):
+    from ..services import payments as psvc
+    db = get_db()
+    o = db.one("SELECT * FROM orders WHERE id=?", (ctx.params["oid"],))
+    if not o:
+        raise ApiError(404, "Order not found.")
+    action = ctx.get("action")
+    o = psvc.review_upi(o, ctx.user, action, text(ctx.get("note"), "Note", required=False, max_len=200))
+    audit(ctx.uid, f"upi_{action}", "order", o["order_no"], str(o["grand_total"]), ctx.ip)
+    return osvc.serialize_order(db, db.one("SELECT * FROM orders WHERE id=?", (o["id"],)), admin=True)
+
+
 # ================================================================ returns & refunds
 @api("GET", "/api/admin/returns", auth="admin", perm="returns")
 def returns_list(ctx):
@@ -1147,6 +1160,12 @@ def save_settings(ctx):
                 clean[k] = int(clean[k])
         else:
             clean[k] = text(v, k.replace("_", " "), required=False, max_len=2000) or ""
+    if "upi_id" in clean:
+        clean["upi_id"] = clean["upi_id"].strip()
+        if clean["upi_id"] and not re.fullmatch(r"[A-Za-z0-9._\-]{2,256}@[A-Za-z][A-Za-z0-9]{1,63}", clean["upi_id"]):
+            raise ApiError(400, "Enter a valid UPI ID, for example yourname@okhdfcbank or 9876543210@ybl.")
+    if clean.get("upi_enabled") and not (clean.get("upi_id") if "upi_id" in clean else get_settings().get("upi_id")):
+        raise ApiError(400, "Enter your UPI ID before turning on UPI payments.")
     if "payment_expiry_minutes" in clean and not 5 <= clean["payment_expiry_minutes"] <= 1440:
         raise ApiError(400, "Payment expiry must be between 5 and 1440 minutes.")
     set_settings(clean)
