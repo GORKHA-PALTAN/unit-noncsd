@@ -124,13 +124,18 @@ def product_card(p, img=None):
 def notify(user_id, title, body, link=None, email=True):
     db = get_db()
     db.insert("notifications", {"user_id": user_id, "title": title, "body": body, "link": link, "created_at": now_iso()})
-    if email and config.SMTP_HOST:
+    from . import mailer
+    if email and mailer.configured():
         row = db.one("SELECT email, is_sample FROM users WHERE id=?", (user_id,))
         if row and row["email"] and not row["is_sample"]:
             threading.Thread(target=_send_mail, args=(row["email"], title, body), daemon=True).start()
 
 
 def _send_mail(to, subject, body):
+    from . import mailer
+    if config.BREVO_API_KEY:
+        mailer.send_email(to, f"{config.APP_NAME}: {subject}", body)
+        return
     try:
         msg = EmailMessage()
         msg["From"] = config.SMTP_FROM or config.SMTP_USER
