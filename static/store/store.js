@@ -152,7 +152,7 @@
       else if (r === "wishlist") await needLogin(pageWishlist);
       else if (r === "account") await needLogin(pageAccount);
       else if (r === "notifications") await needLogin(pageNotifications);
-      else if (r === "login") pageAuth("login", q.get("next"));
+      else if (r === "login") pageAuth("login", q.get("next"), q.get("pw") === "1");
       else if (r === "register") pageAuth("register", q.get("next"));
       else if (r === "policy") pagePolicy(parts[1]);
       else main.innerHTML = `<div class="empty"><div class="ico">?</div><h3>Page not found</h3><a class="btn btn-primary" href="#/">Go home</a></div>`;
@@ -752,31 +752,141 @@
     if (r.items.some((n) => !n.is_read)) { await api("POST", "/api/notifications/read"); S.counts.notifications = 0; paintCounts(); }
   }
 
-  function pageAuth(mode, next) {
+  function pageAuth(mode, next, usePassword) {
     if (S.me) { location.hash = next || "#/account"; return; }
     const reg = mode === "register";
-    main.innerHTML = `<div class="auth"><h1>${reg ? "Create your account" : "Sign in"}</h1><p class="muted">${reg ? "Register to order, track deliveries and save a wishlist." : "Welcome back to " + esc(S.meta.store.store_name)}</p>
-      <form id="auth-f" novalidate>${reg ? `<label class="fld"><span>Full name</span><input name="name" required autocomplete="name"></label>` : ""}
-        <label class="fld"><span>Email${reg ? "" : " or phone"}</span><input name="email" required type="${reg ? "email" : "text"}" autocomplete="${reg ? "email" : "username"}"></label>
-        ${reg ? `<label class="fld"><span>Mobile number (optional)</span><input name="phone" inputmode="tel" autocomplete="tel"></label>` : ""}
-        <label class="fld"><span>Password</span><input name="password" type="password" required autocomplete="${reg ? "new-password" : "current-password"}">${reg ? "<small>At least 8 characters with letters and numbers.</small>" : ""}</label>
-        <div class="issue" id="auth-err" role="alert" hidden></div>
-        <button class="btn btn-primary btn-block" style="min-height:50px;margin-top:6px">${reg ? "Create account" : "Sign in"}</button></form>
-      <p style="text-align:center;margin-top:16px">${reg ? `Already have an account? <a href="#/login${next ? "?next=" + encodeURIComponent(next) : ""}" style="color:var(--teal);font-weight:600">Sign in</a>` : `New here? <a href="#/register${next ? "?next=" + encodeURIComponent(next) : ""}" style="color:var(--teal);font-weight:600">Create an account</a>`}</p>
-      ${!reg ? `<p style="text-align:center;font-size:13px;color:var(--ink-3)">Demo customer: customer@demo.local / Demo@1234 · Staff and owner: <a href="/admin" style="color:var(--teal)">admin sign-in</a></p>` : ""}</div>`;
-    document.getElementById("auth-f").onsubmit = async (e) => {
-      e.preventDefault();
-      const btn = e.target.querySelector("button");
-      const err = document.getElementById("auth-err");
-      err.hidden = true; btn.disabled = true;
-      try {
-        await api("POST", reg ? "/api/auth/register" : "/api/auth/login", formData(e.target));
-        await refreshMe();
-        toast(reg ? "Account created — welcome!" : "Signed in");
-        location.hash = next && next.startsWith("#/") ? next : "#/";
-      } catch (ex) { err.textContent = ex.message; err.hidden = false; }
-      finally { btn.disabled = false; }
+    const gid = S.meta.google_client_id;
+    const go = () => { location.hash = next && next.startsWith("#/") ? next : "#/"; };
+    const swap = `${reg ? `Already have an account? <a href="#/login${next ? "?next=" + encodeURIComponent(next) : ""}" style="color:var(--teal);font-weight:600">Sign in</a>`
+      : `New here? Just enter your email above — we'll create your account.`}`;
+    main.innerHTML = `<div class="auth"><h1>${reg ? "Create your account" : "Sign in"}</h1>
+      <p class="muted">${reg ? "Register to order, track deliveries and save a wishlist." : "Welcome to " + esc(S.meta.store.store_name)}</p>
+      ${gid ? `<div class="g-wrap"><div id="g-btn"></div><div class="issue" id="g-err" role="alert" hidden></div></div>
+        <div class="or-line"><span>or use your email</span></div>` : ""}
+      <div id="auth-box"></div>
+      <p style="text-align:center;margin-top:16px;font-size:15px">${swap}</p>
+      <p style="text-align:center;font-size:13px;color:var(--ink-3)">Staff and owner: <a href="/admin" style="color:var(--teal)">admin sign-in</a></p></div>`;
+    const box = document.getElementById("auth-box");
+    let email = "", resendTimer = null;
+
+    const finish = async (r) => {
+      await refreshMe();
+      toast(r.created ? "Account created — welcome!" : "Signed in");
+      go();
     };
+    const busy = (btn, on, label) => { btn.disabled = on; if (label) btn.textContent = label; };
+    const showErr = (id, msg) => { const e = document.getElementById(id); e.textContent = msg; e.hidden = !msg; };
+
+    function stepEmail() {
+      clearInterval(resendTimer);
+      box.innerHTML = `<form id="otp-e" novalidate>
+        <label class="fld"><span>Email address</span><input name="email" type="email" inputmode="email" required autocomplete="email" value="${esc(email)}" placeholder="you@gmail.com"></label>
+        <div class="issue" id="e-err" role="alert" hidden></div>
+        <button class="btn btn-primary btn-block" style="min-height:50px;margin-top:6px">Send code</button>
+        <p class="muted" style="font-size:13px;text-align:center;margin-top:10px">We'll email you a 6-digit code. No password needed.</p></form>
+        <p style="text-align:center;font-size:14px;margin-top:4px"><a href="#" id="to-pw" style="color:var(--ink-2)">Sign in with a password instead</a></p>`;
+      const f = document.getElementById("otp-e");
+      f.email.focus();
+      document.getElementById("to-pw").onclick = (e) => { e.preventDefault(); stepPassword(); };
+      f.onsubmit = async (e) => {
+        e.preventDefault();
+        const btn = f.querySelector("button"); showErr("e-err", "");
+        email = f.email.value.trim().toLowerCase();
+        busy(btn, true, "Sending…");
+        try { await api("POST", "/api/auth/otp/request", { email }); stepCode(); }
+        catch (ex) { showErr("e-err", ex.message); busy(btn, false, "Send code"); }
+      };
+    }
+
+    function stepCode(needName) {
+      box.innerHTML = `<form id="otp-c" novalidate>
+        <p style="margin:0 0 12px">We sent a 6-digit code to <b>${esc(email)}</b>. <a href="#" id="chg" style="color:var(--teal)">Change</a></p>
+        <label class="fld"><span>Enter code</span><input name="code" class="otp-in" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]*" required placeholder="••••••"></label>
+        <div id="new-fields" ${needName ? "" : "hidden"}>
+          <p class="muted" style="margin:4px 0 10px">New here — tell us your name to finish creating your account.</p>
+          <label class="fld"><span>Full name</span><input name="name" autocomplete="name"></label>
+          <label class="fld"><span>Mobile number (optional)</span><input name="phone" inputmode="tel" autocomplete="tel"></label></div>
+        <div class="issue" id="c-err" role="alert" hidden></div>
+        <button class="btn btn-primary btn-block" style="min-height:50px;margin-top:6px">${needName ? "Create account" : "Verify & sign in"}</button>
+        <p style="text-align:center;font-size:14px;margin-top:12px"><button type="button" class="linkbtn" id="resend" disabled>Resend code</button></p>
+        <p class="muted" style="font-size:13px;text-align:center">Can't find it? Check your Spam or Promotions folder.</p></form>`;
+      const f = document.getElementById("otp-c");
+      const resend = document.getElementById("resend");
+      (needName ? f.name : f.code).focus();
+      document.getElementById("chg").onclick = (e) => { e.preventDefault(); stepEmail(); };
+      let wait = 45;
+      const tick = () => { if (!document.body.contains(resend)) return clearInterval(resendTimer);
+        resend.disabled = wait > 0; resend.textContent = wait > 0 ? `Resend code in ${wait}s` : "Resend code"; wait--; if (wait < -1) clearInterval(resendTimer); };
+      clearInterval(resendTimer); tick(); resendTimer = setInterval(tick, 1000);
+      resend.onclick = async () => {
+        showErr("c-err", ""); resend.disabled = true;
+        try { await api("POST", "/api/auth/otp/request", { email }); toast("New code sent"); f.code.value = ""; wait = 45; clearInterval(resendTimer); tick(); resendTimer = setInterval(tick, 1000); }
+        catch (ex) { showErr("c-err", ex.message); resend.disabled = false; }
+      };
+      f.code.oninput = () => {
+        f.code.value = f.code.value.replace(/\D/g, "").slice(0, 6);
+        if (f.code.value.length === 6 && document.getElementById("new-fields").hidden) f.requestSubmit();
+      };
+      f.onsubmit = async (e) => {
+        e.preventDefault();
+        const btn = f.querySelector("button[type=submit], button:not([type])"); showErr("c-err", "");
+        const body = { email, code: f.code.value };
+        if (!document.getElementById("new-fields").hidden) {
+          body.name = f.name.value.trim(); body.phone = f.phone.value.trim();
+          if (body.name.length < 2) { showErr("c-err", "Please enter your full name."); f.name.focus(); return; }
+        }
+        const label = btn.textContent; busy(btn, true, "Checking…");
+        try {
+          const r = await api("POST", "/api/auth/otp/verify", body);
+          if (r.need_name) {
+            document.getElementById("new-fields").hidden = false; f.name.focus();
+            busy(btn, false, "Create account"); return;
+          }
+          clearInterval(resendTimer); await finish(r);
+        } catch (ex) { showErr("c-err", ex.message); busy(btn, false, label); }
+      };
+    }
+
+    function stepPassword() {
+      clearInterval(resendTimer);
+      box.innerHTML = `<form id="auth-f" novalidate>
+        <label class="fld"><span>Email or phone</span><input name="email" required autocomplete="username" value="${esc(email)}"></label>
+        <label class="fld"><span>Password</span><input name="password" type="password" required autocomplete="current-password"></label>
+        <div class="issue" id="auth-err" role="alert" hidden></div>
+        <button class="btn btn-primary btn-block" style="min-height:50px;margin-top:6px">Sign in</button></form>
+        <p style="text-align:center;font-size:14px;margin-top:8px"><a href="#" id="to-otp" style="color:var(--teal);font-weight:600">Sign in with an email code instead</a></p>`;
+      document.getElementById("to-otp").onclick = (e) => { e.preventDefault(); stepEmail(); };
+      const f = document.getElementById("auth-f");
+      f.onsubmit = async (e) => {
+        e.preventDefault();
+        const btn = f.querySelector("button"); showErr("auth-err", ""); busy(btn, true);
+        try { const r = await api("POST", "/api/auth/login", formData(f)); await finish(r); }
+        catch (ex) { showErr("auth-err", ex.message); busy(btn, false); }
+      };
+    }
+
+    usePassword ? stepPassword() : stepEmail();
+    if (gid) setupGoogle(gid, next);
+  }
+
+  async function setupGoogle(clientId, next) {
+    const box = document.getElementById("g-btn"), err = document.getElementById("g-err");
+    try { await loadScript("https://accounts.google.com/gsi/client"); }
+    catch { err.textContent = "Google sign-in could not load. Use your email instead."; err.hidden = false; return; }
+    if (!document.body.contains(box) || !window.google?.accounts?.id) return;
+    google.accounts.id.initialize({
+      client_id: clientId, ux_mode: "popup", auto_select: false,
+      callback: async (resp) => {
+        err.hidden = true;
+        try {
+          const r = await api("POST", "/api/auth/google", { credential: resp.credential });
+          await refreshMe();
+          toast(r.created ? "Account created with Google — welcome!" : "Signed in with Google");
+          location.hash = next && next.startsWith("#/") ? next : "#/";
+        } catch (ex) { err.textContent = ex.message; err.hidden = false; }
+      },
+    });
+    google.accounts.id.renderButton(box, { theme: "outline", size: "large", shape: "pill", text: "continue_with", width: Math.min(box.clientWidth || 320, 400), logo_alignment: "center" });
   }
 
   function pagePolicy(k) {

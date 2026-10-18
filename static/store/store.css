@@ -250,3 +250,12 @@ body.drawer-open { overflow: hidden; }
 .credit { padding: 16px 18px 24px; font-size: 13px; color: var(--ink-3); text-align: center; line-height: 1.6; }
 .credit b { color: inherit; font-weight: 600; }
 .foot-credit { margin-top: 8px; color: #fff; opacity: .9; font-size: 14px; }
+
+.g-wrap { display: flex; flex-direction: column; align-items: center; gap: 8px; margin: 18px 0 6px; }
+.g-wrap #g-btn { width: 100%; display: flex; justify-content: center; min-height: 44px; }
+.or-line { display: flex; align-items: center; gap: 12px; margin: 14px 0; color: var(--ink-3); font-size: 14px; }
+.or-line::before, .or-line::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+
+.otp-in { font-size: 26px !important; letter-spacing: 10px; text-align: center; font-weight: 700; }
+.linkbtn { background: none; border: 0; color: var(--teal); font-weight: 600; cursor: pointer; font-size: 14px; padding: 6px; }
+.linkbtn:disabled { color: var(--ink-3); cursor: default; font-weight: 500; }
