@@ -474,6 +474,7 @@
     const st = { address: (addrs.items.find((a) => a.is_default) || addrs.items[0] || {}).id, delivery: null, payment: null, coupon: "", quote: null };
     const pays = S.meta.payments;
     const payOpts = [
+      { code: "upi", name: "UPI — GPay, PhonePe, Paytm, BHIM", desc: "Pay directly to the store's UPI ID, then enter the transaction ID", ok: !!(pays.upi && pays.upi.enabled), hideOff: true },
       { code: "cod", name: "Cash on Delivery", desc: `Pay in cash when your order arrives (up to ${fmt.inr(pays.cod.max)})`, ok: pays.cod.enabled },
       { code: "razorpay", name: "UPI / Card / Netbanking (Razorpay)", desc: pays.razorpay.configured ? "Secure online payment" : "Not configured yet — the store owner must add payment keys", ok: pays.razorpay.enabled },
       { code: "sandbox", name: "Test payment (Sandbox)", desc: "Simulated online payment for testing. No real money is charged.", ok: pays.sandbox.enabled },
@@ -497,7 +498,7 @@
             <div><b>${esc(d.name)}</b> — ${d.charge && !(d.free_above && q.subtotal >= d.free_above) ? fmt.inr(d.charge) : "Free"}<small>${esc(d.description || "")} · ${d.eta[0]}–${d.eta[1]} days${d.free_above ? ` · free above ${fmt.inr(d.free_above)}` : ""}</small></div></label>`).join("")}
           ${q.eta ? `<div style="font-size:14px;color:var(--ink-2)">Estimated delivery: <b>${fmt.date(q.eta[0])} – ${fmt.date(q.eta[1])}</b></div>` : ""}</div>
         <div class="box" style="margin-bottom:14px"><h2>3. Payment method</h2>
-          ${payOpts.map((p) => `<label class="opt ${p.code === st.payment ? "on" : ""} ${p.ok ? "" : "disabled"}"><input type="radio" name="pm" value="${p.code}" ${p.code === st.payment ? "checked" : ""} ${p.ok ? "" : "disabled"}>
+          ${payOpts.filter((p) => p.ok || !p.hideOff).map((p) => `<label class="opt ${p.code === st.payment ? "on" : ""} ${p.ok ? "" : "disabled"}"><input type="radio" name="pm" value="${p.code}" ${p.code === st.payment ? "checked" : ""} ${p.ok ? "" : "disabled"}>
             <div><b>${esc(p.name)}</b>${p.ok ? "" : ' <span class="pill">Unavailable</span>'}<small>${esc(p.desc)}</small></div></label>`).join("")}
           ${q.payment_message ? `<div class="issue">${esc(q.payment_message)}</div>` : ""}</div>
         <div class="box"><h2>4. Review items</h2>${q.lines.map((l) => `<div class="sumrow"><span>${esc(l.name)} × ${l.qty}</span><span>${fmt.inr(l.line_total)}</span></div>`).join("")}
@@ -548,6 +549,40 @@
   }
 
   async function runPayment(orderNo, p) {
+    if (p.method === "upi") {
+      const isPhone = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+      const res = await modal({
+        title: "Pay with UPI",
+        body: `<div class="upi-pay">
+          <div class="upi-amt"><div>Amount to pay</div><b>${fmt.inr(p.amount)}</b><div>Order ${esc(orderNo)}</div></div>
+          ${isPhone ? `<a class="btn btn-primary btn-block upi-open" href="${esc(p.link)}">Open UPI app to pay</a>
+            <div class="upi-or">or scan this code from another phone</div>` : `<div class="upi-or">Scan with any UPI app — GPay, PhonePe, Paytm, BHIM</div>`}
+          <div class="upi-qr">${NCQR.svg(p.link, 5)}</div>
+          <div class="upi-id">Pay to <b>${esc(p.payee)}</b><br><span id="upi-id-t">${esc(p.upi_id)}</span> <button type="button" class="linkbtn" id="upi-copy">Copy UPI ID</button></div>
+          <ol class="upi-steps"><li>Pay exactly <b>${fmt.inr(p.amount)}</b>.</li><li>Copy the <b>UPI transaction ID / UTR</b> (12 digits) from your UPI app's payment receipt.</li><li>Paste it below and tap <b>Submit</b>.</li></ol>
+          <label class="fld"><span>UPI transaction ID / UTR</span><input id="upi-utr" inputmode="text" autocomplete="off" placeholder="e.g. 428812345678" maxlength="35"></label>
+          <p class="muted" style="font-size:13px">The store checks its account and confirms your order — usually within a few hours.</p></div>`,
+        actions: [
+          { label: "Pay later", cls: "btn-ghost", value: null },
+          { label: "Submit", cls: "btn-primary", handler: async (b) => {
+            const utr = b.querySelector("#upi-utr").value.trim();
+            if (!utr) { toast("Enter the transaction ID from your UPI app", "warn"); b.querySelector("#upi-utr").focus(); return false; }
+            await api("POST", `/api/orders/${orderNo}/upi-submit`, { utr });
+            return { ok: true };
+          } },
+        ],
+        onOpen: (b) => {
+          b.querySelector("#upi-copy").onclick = async () => {
+            try { await navigator.clipboard.writeText(p.upi_id); toast("UPI ID copied"); } catch { toast(p.upi_id); }
+          };
+        },
+      });
+      if (res && res.ok) toast("Thank you! The store will confirm your payment shortly.");
+      else toast("You can pay and submit the transaction ID from your order page.", "warn");
+      location.hash = "#/order/" + orderNo;
+      route();
+      return;
+    }
     if (p.method === "sandbox") {
       const result = await modal({
         title: "Test payment",
@@ -662,9 +697,11 @@
         <div class="sumrow"><span>Delivery</span><span>${o.delivery_charge ? fmt.inr(o.delivery_charge) : "Free"}</span></div>
         <div class="sumrow"><span>GST (included)</span><span>${fmt.inr(o.tax_total)}</span></div>
         <div class="sumrow total"><span>Total</span><span>${fmt.inr(o.grand_total)}</span></div>
-        <div style="font-size:14px;margin-top:6px">Method: <b>${{ cod: "Cash on Delivery", razorpay: "Razorpay", sandbox: "Sandbox test payment" }[o.payment_method] || esc(o.payment_method)}</b> · Status: <b>${esc({ pending: o.payment_method === "cod" ? "Pay on delivery" : "Pending", paid: "Paid", failed: "Failed", refunded: "Refunded", cancelled: "Not charged" }[o.payment_status] || o.payment_status)}</b></div>
+        <div style="font-size:14px;margin-top:6px">Method: <b>${{ cod: "Cash on Delivery", razorpay: "Razorpay", sandbox: "Sandbox test payment", upi: "UPI" }[o.payment_method] || esc(o.payment_method)}</b> · Status: <b>${esc({ pending: o.payment_method === "cod" ? "Pay on delivery" : "Pending", paid: "Paid", failed: "Failed", refunded: "Refunded", cancelled: "Not charged" }[o.payment_status] || o.payment_status)}</b></div>
         ${o.refunds.map((r) => `<div style="font-size:14px;margin-top:6px">Refund ${fmt.inr(r.amount)}: <b>${r.status === "completed" ? "Completed" : "Processing"}</b>${r.reference ? " · Ref " + esc(r.reference) : ""}</div>`).join("")}
-        ${o.actions.can_pay ? `<button class="btn btn-primary btn-block" id="o-pay" style="margin-top:12px">Complete payment</button>` : ""}
+        ${o.upi && o.upi.status === "submitted" && o.payment_status !== "paid" ? `<div class="upi-note">⏳ UPI payment submitted (Txn ID <b>${esc(o.upi.utr)}</b>). The store is checking it and will confirm your order soon.</div>` : ""}
+        ${o.upi && o.upi.status === "failed" && o.status === "payment_pending" ? `<div class="issue" style="margin-top:8px">Payment not confirmed: ${esc(o.upi.error || "")} Please pay again or submit the correct transaction ID.</div>` : ""}
+        ${o.actions.can_pay ? `<button class="btn btn-primary btn-block" id="o-pay" style="margin-top:12px">${o.payment_method === "upi" ? "Pay with UPI / enter transaction ID" : "Complete payment"}</button>` : ""}
       </div>
       <div class="box" style="margin-bottom:14px"><h2>Delivery address</h2><div style="font-size:15px"><b>${esc(o.ship_name)}</b><br>${esc(addr.line1)}${addr.line2 ? ", " + esc(addr.line2) : ""}<br>${esc(addr.city)}, ${esc(addr.state)} ${esc(addr.pincode)}<br>${esc(o.ship_phone)}</div></div>
       ${o.requests.length ? `<div class="box" style="margin-bottom:14px"><h2>Requests</h2>${o.requests.map((r) => `<div style="font-size:14px;margin-bottom:6px">${r.kind === "cancel" ? "Cancellation" : "Return"}: <b>${esc(r.status)}</b>${r.resolution_note ? " — " + esc(r.resolution_note) : ""}</div>`).join("")}</div>` : ""}
