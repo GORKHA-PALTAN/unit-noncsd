@@ -136,7 +136,7 @@ def notify(user_id, title, body, link=None, email=True):
 
 def _send_mail(to, subject, body):
     from . import mailer
-    if config.BREVO_API_KEY:
+    if config.BREVO_API_KEY or config.GMAIL_SCRIPT_URL:
         mailer.send_email(to, f"{config.APP_NAME}: {subject}", body)
         return
     try:
