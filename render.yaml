@@ -1,0 +1,32 @@
+# Render "Blueprint": creates the web service for the Unit Non-CSD App.
+# Render → New → Blueprint → pick this repository. You will be asked for the values marked sync: false.
+services:
+  - type: web
+    name: unit-noncsd
+    runtime: python
+    plan: free
+    region: singapore
+    buildCommand: pip install -r requirements.txt
+    startCommand: python run.py
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.7
+      - key: DATABASE_URL        # paste the Neon connection string
+        sync: false
+      - key: OWNER_EMAIL         # your login email for the owner dashboard
+        sync: false
+      - key: OWNER_PASSWORD      # choose a strong password (8+ characters, letters and numbers)
+        sync: false
+      - key: SECRET_KEY
+        generateValue: true
+      - key: HOST
+        value: 0.0.0.0
+      - key: COOKIE_SECURE
+        value: "true"
+      - key: FORWARDED_ALLOW_IPS
+        value: "*"
+      - key: SEED_SAMPLE_DATA
+        value: "true"
+      - key: SEED_DEMO_ACCOUNTS
+        value: "false"
