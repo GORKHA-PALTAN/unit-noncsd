@@ -40,7 +40,18 @@ PORT = int(env("PORT", "8000"))
 DEBUG = env_bool("DEBUG", False)
 
 # Database: SQLite file by default; set DATABASE_URL=postgresql://user:pass@host/db for PostgreSQL
-DATABASE_URL = env("DATABASE_URL", f"sqlite:///{BASE_DIR / 'data' / 'store.db'}")
+def _clean_db_url(v):
+    """Accept the connection line exactly as copied from Neon, even with a leading `psql` or quotes."""
+    v = (v or "").strip()
+    if v.lower().startswith("psql "):
+        v = v[5:].strip()
+    v = v.strip("'\" ")
+    if v.startswith("postgres://"):
+        v = "postgresql://" + v[len("postgres://"):]
+    return v
+
+
+DATABASE_URL = _clean_db_url(env("DATABASE_URL", f"sqlite:///{BASE_DIR / 'data' / 'store.db'}"))
 
 # Security
 SESSION_DAYS = int(env("SESSION_DAYS", "7"))
@@ -65,6 +76,9 @@ TZ_OFFSET_MINUTES = int(env("TZ_OFFSET_MINUTES", "330"))
 RAZORPAY_KEY_ID = env("RAZORPAY_KEY_ID")
 RAZORPAY_KEY_SECRET = env("RAZORPAY_KEY_SECRET")
 RAZORPAY_WEBHOOK_SECRET = env("RAZORPAY_WEBHOOK_SECRET")
+
+# "Continue with Google" for customers: OAuth Client ID from Google Cloud Console (not secret)
+GOOGLE_CLIENT_ID = env("GOOGLE_CLIENT_ID")
 
 # Optional AI narrative (statistical analytics work without it)
 ANTHROPIC_API_KEY = env("ANTHROPIC_API_KEY")

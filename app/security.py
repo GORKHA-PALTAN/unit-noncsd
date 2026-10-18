@@ -120,6 +120,8 @@ _rl_lock = threading.Lock()
 
 LIMITS = {
     "login": (10, 300),
+    "otp_send": (6, 900),
+    "otp_verify": (20, 900),
     "register": (6, 3600),
     "order": (20, 600),
     "pay": (30, 600),

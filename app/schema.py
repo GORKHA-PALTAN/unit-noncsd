@@ -186,6 +186,12 @@ CREATE TABLE IF NOT EXISTS files (
   id {PK}, path TEXT UNIQUE NOT NULL, mime TEXT NOT NULL, data {BLOB} NOT NULL, created_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS login_codes (
+  id {PK}, email TEXT NOT NULL, code_hash TEXT NOT NULL, attempts INTEGER NOT NULL DEFAULT 0,
+  ip TEXT, created_at TEXT NOT NULL, expires_at TEXT NOT NULL, used_at TEXT
+);
+CREATE INDEX IF NOT EXISTS ix_login_codes_email ON login_codes(email);
+
 CREATE TABLE IF NOT EXISTS audit_log (
   id {PK}, actor_id INTEGER, action TEXT NOT NULL, entity TEXT, entity_id TEXT, detail TEXT, ip TEXT, created_at TEXT NOT NULL
 );

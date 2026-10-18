@@ -20,9 +20,10 @@ from .web import ROUTES, ApiError
 from .routes import auth, store, admin  # noqa: F401,E402
 
 
-CSP = ("default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
-       "font-src 'self' https://fonts.gstatic.com data:; script-src 'self' https://checkout.razorpay.com; "
-       "frame-src https://api.razorpay.com https://checkout.razorpay.com; connect-src 'self' https://lumberjack.razorpay.com; "
+CSP = ("default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com/gsi/style; "
+       "font-src 'self' https://fonts.gstatic.com data:; script-src 'self' https://checkout.razorpay.com https://accounts.google.com/gsi/client; "
+       "frame-src https://api.razorpay.com https://checkout.razorpay.com https://accounts.google.com; "
+       "connect-src 'self' https://lumberjack.razorpay.com https://accounts.google.com/gsi/; "
        "object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'")
 
 
