@@ -476,7 +476,7 @@
     const payOpts = [
       { code: "upi", name: "UPI — GPay, PhonePe, Paytm, BHIM", desc: "Pay directly to the store's UPI ID, then enter the transaction ID", ok: !!(pays.upi && pays.upi.enabled), hideOff: true },
       { code: "cod", name: "Cash on Delivery", desc: `Pay in cash when your order arrives (up to ${fmt.inr(pays.cod.max)})`, ok: pays.cod.enabled },
-      { code: "razorpay", name: "UPI / Card / Netbanking (Razorpay)", desc: pays.razorpay.configured ? "Secure online payment" : "Not configured yet — the store owner must add payment keys", ok: pays.razorpay.enabled },
+      { code: "razorpay", name: "UPI / Card / Netbanking (Razorpay)", desc: "Secure online payment", ok: pays.razorpay.enabled, hideOff: true },
       { code: "sandbox", name: "Test payment (Sandbox)", desc: "Simulated online payment for testing. No real money is charged.", ok: pays.sandbox.enabled },
     ];
     st.payment = (payOpts.find((p) => p.ok) || {}).code;
