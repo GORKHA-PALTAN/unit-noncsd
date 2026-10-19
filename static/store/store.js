@@ -247,9 +247,12 @@
     main.innerHTML = `
       <section class="hero" aria-roledescription="carousel" aria-label="Promotions">
         <div class="hero-track" id="hero-track">${banners.map((b, i) => `
-          <div class="hero-slide th-${esc(b.theme || "navy")}" role="group" aria-label="${i + 1} of ${banners.length}">
+          ${b.photo ? `<a class="hero-slide hero-photo th-${esc(b.theme || "navy")} ${b.title ? "has-text" : ""}" href="${esc(b.link || "#/search")}" role="group" aria-label="${esc(b.title || "Offer")} — ${i + 1} of ${banners.length}">
+            <img class="hero-bg" src="${esc(b.photo)}" alt="">
+            ${b.title ? `<div class="hero-txt"><h2>${esc(b.title)}</h2>${b.subtitle ? `<p>${esc(b.subtitle)}</p>` : ""}${b.cta ? `<span class="btn">${esc(b.cta)}</span>` : ""}</div>` : ""}</a>`
+          : `<div class="hero-slide th-${esc(b.theme || "navy")}" role="group" aria-label="${i + 1} of ${banners.length}">
             <div><h2>${esc(b.title)}</h2>${b.subtitle ? `<p>${esc(b.subtitle)}</p>` : ""}${b.cta ? `<a class="btn" href="${esc(b.link || "#/search")}">${esc(b.cta)}</a>` : ""}</div>
-            <div class="hero-art">${b.image_url || heroImgs[i] ? `<img src="${esc(b.image_url || heroImgs[i])}" alt="">` : ""}</div></div>`).join("")}</div>
+            <div class="hero-art">${b.image_url || heroImgs[i] ? `<img src="${esc(b.image_url || heroImgs[i])}" alt="">` : ""}</div></div>`}`).join("")}</div>
         ${banners.length > 1 ? `<div class="dots" id="hero-dots">${banners.map((_, i) => `<button aria-label="Slide ${i + 1}" class="${i ? "" : "on"}"></button>`).join("")}</div>` : ""}
       </section>
       <section class="sec"><div class="sec-h"><h2>Shop by category</h2><a href="#/categories">All categories ›</a></div>
