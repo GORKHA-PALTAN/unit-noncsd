@@ -974,7 +974,7 @@ def _banner_fields(ctx):
     link = text(ctx.get("link"), "Link", required=False, max_len=200)
     if link and not (link.startswith("#/") or link.startswith("/")):
         raise ApiError(400, "Banner links must be internal (start with #/).")
-    return {"title": text(ctx.get("title"), "Title", max_len=80), "subtitle": text(ctx.get("subtitle"), "Subtitle", required=False, max_len=160),
+    return {"title": text(ctx.get("title"), "Title", required=False, max_len=80) or "", "subtitle": text(ctx.get("subtitle"), "Subtitle", required=False, max_len=160),
             "cta": text(ctx.get("cta"), "Button text", required=False, max_len=30), "link": link, "theme": theme,
             "department": text(ctx.get("department"), "Department", required=False, max_len=40),
             "active": 1 if ctx.get("active", True) else 0, "sort": int(num(ctx.get("sort", 0), "Order", integer=True, required=False) or 0),
@@ -986,18 +986,63 @@ def add_banner(ctx):
     db = get_db()
     bid = db.insert("banners", {**_banner_fields(ctx), "created_at": now_iso()})
     audit(ctx.uid, "banner_create", "banner", bid, None, ctx.ip)
-    return {"ok": True}
+    return {"ok": True, "id": bid}
 
 
 @api("PUT", "/api/admin/banners/{bid:int}", auth="admin", perm="marketing")
 def edit_banner(ctx):
     get_db().update("banners", ctx.params["bid"], _banner_fields(ctx))
+    return {"ok": True, "id": ctx.params["bid"]}
+
+
+def _drop_banner_file(url):
+    if url and url.startswith("/uploads/banners/"):
+        delete_file("banners/" + url.rsplit("/", 1)[-1])
+
+
+@api("POST", "/api/admin/banners/{bid:int}/image", auth="admin", perm="marketing", multipart=True)
+def banner_image(ctx):
+    """Upload or replace the photo of a banner (JPG, PNG, WEBP or GIF, max 5 MB)."""
+    db = get_db()
+    b = db.one("SELECT * FROM banners WHERE id=?", (ctx.params["bid"],))
+    if not b:
+        raise ApiError(404, "Banner not found.")
+    files = ctx.form.getlist("file") if ctx.form else []
+    if not files:
+        raise ApiError(400, "Choose a photo.")
+    f = files[0]
+    f.file.seek(0)
+    data = f.file.read(config.MAX_UPLOAD_BYTES + 1)
+    if len(data) > config.MAX_UPLOAD_BYTES:
+        raise ApiError(400, "Photo is larger than 5 MB. Please choose a smaller one.")
+    ext = _sniff(data)
+    if not ext:
+        raise ApiError(400, "Only JPG, PNG, WEBP or GIF photos are allowed.")
+    name = f"{b['id']}_{secrets.token_hex(8)}.{ext}"
+    save_file(f"banners/{name}", {"jpg": "image/jpeg", "png": "image/png", "gif": "image/gif", "webp": "image/webp"}[ext], data)
+    db.run("UPDATE banners SET image_url=? WHERE id=?", (f"/uploads/banners/{name}", b["id"]))
+    _drop_banner_file(b["image_url"])
+    audit(ctx.uid, "banner_photo", "banner", b["id"], None, ctx.ip)
+    return {"ok": True, "image_url": f"/uploads/banners/{name}"}
+
+
+@api("DELETE", "/api/admin/banners/{bid:int}/image", auth="admin", perm="marketing")
+def banner_image_remove(ctx):
+    db = get_db()
+    b = db.one("SELECT * FROM banners WHERE id=?", (ctx.params["bid"],))
+    if not b:
+        raise ApiError(404, "Banner not found.")
+    db.run("UPDATE banners SET image_url=NULL WHERE id=?", (b["id"],))
+    _drop_banner_file(b["image_url"])
     return {"ok": True}
 
 
 @api("DELETE", "/api/admin/banners/{bid:int}", auth="admin", perm="marketing")
 def delete_banner(ctx):
+    b = get_db().one("SELECT image_url FROM banners WHERE id=?", (ctx.params["bid"],))
     get_db().run("DELETE FROM banners WHERE id=?", (ctx.params["bid"],))
+    if b:
+        _drop_banner_file(b["image_url"])
     audit(ctx.uid, "banner_delete", "banner", ctx.params["bid"], None, ctx.ip)
     return {"ok": True}
 
@@ -1142,6 +1187,23 @@ def settings(ctx):
                 "orders": db.val("SELECT COUNT(*) FROM orders WHERE is_sample=1"),
                 "customers": db.val("SELECT COUNT(*) FROM users WHERE is_sample=1 AND role='customer'"),
             }}
+
+
+@api("POST", "/api/admin/test-email", auth="owner")
+def test_email(ctx):
+    """Send a test email and report exactly what happened, so the owner can fix email settings."""
+    to = (ctx.get("to") or ctx.user["email"] or "").strip().lower()
+    if not EMAIL_RE.match(to):
+        raise ApiError(400, "Enter a valid email address.")
+    if not _mailer.configured():
+        return {"ok": False, "provider": None,
+                "message": "No email service is set up on the server. Add GMAIL_SCRIPT_URL and GMAIL_SCRIPT_SECRET "
+                           "(or BREVO_API_KEY and MAIL_FROM_EMAIL) in Render → Environment, then redeploy."}
+    ok = _mailer.send_email(to, f"Test email from {get_settings()['store_name']}",
+                            "This is a test email from your store. If you can read this, login codes will arrive too.")
+    return {"ok": ok, "provider": _mailer.provider_name(),
+            "message": f"The email service accepted the message for {to}. Check the inbox, then Spam and Promotions." if ok
+            else (_mailer.LAST_ERROR[0] or "Sending failed.")}
 
 
 @api("PUT", "/api/admin/settings", auth="owner")

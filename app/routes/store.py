@@ -81,6 +81,7 @@ def home(ctx):
         banners = db.all("SELECT * FROM banners WHERE active=1 AND placement='hero' ORDER BY sort, id")
     for b in banners:  # illustrate each banner with a product from the category it links to
         b["image_url"] = b["image_url"] or None
+        b["photo"] = b["image_url"]  # a photo the owner uploaded (shown full width); image_url may fall back to a product picture
         if not b["image_url"] and b["link"] and b["link"].startswith("#/c/"):
             row = db.one(f"SELECT i.url FROM product_images i JOIN products p ON p.id=i.product_id JOIN categories c ON c.id IN (p.category_id, p.subcategory_id) "
                          f"WHERE c.slug=? AND p.status IN {VISIBLE} ORDER BY p.featured DESC, p.units_sold DESC, i.sort LIMIT 1", (b["link"][4:],))
@@ -104,7 +105,7 @@ def home(ctx):
     tree = category_tree(db)
     popular = sorted([c for c in tree if not dept or c["department"] == dept], key=lambda c: -c["count"])
     return {
-        "banners": [{k: b[k] for k in ("id", "title", "subtitle", "cta", "link", "theme", "image_url")} for b in banners],
+        "banners": [{k: b[k] for k in ("id", "title", "subtitle", "cta", "link", "theme", "image_url", "photo")} for b in banners],
         "featured": section("p.featured DESC, p.rating_avg DESC", 10, "AND p.featured=1"),
         "best_sellers": section("p.units_sold DESC", 10),
         "new_arrivals": section("p.created_at DESC", 10),
