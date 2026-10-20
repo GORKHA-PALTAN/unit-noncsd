@@ -998,9 +998,9 @@
     el.innerHTML = `<div class="cards">
       <div class="card c12"><h2>Announcement strip</h2><div class="sub">The teal bar under the store header</div><div style="display:flex;gap:8px"><input class="inp" id="ann" value="${esc(b.announcement || "")}" maxlength="160"><button class="btn btn-primary" id="anns">Save</button></div></div>
       <div class="card c12"><div class="card-h"><div><h2>Home page banners</h2><div class="sub">Shown as the hero carousel. Leave department empty to show on every tab.</div></div><button class="btn btn-primary btn-sm" id="badd">+ Add banner</button></div>
-        <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Order</th><th>Title</th><th>Theme</th><th>Department</th><th>Link</th><th>Status</th><th></th></tr></thead><tbody>
-        ${b.items.map((x) => `<tr><td>${x.sort}</td><td class="pname">${esc(x.title)}<div class="muted">${esc(x.subtitle || "")}</div></td><td><span class="pill">${esc(x.theme)}</span></td><td>${esc(x.department || "All")}</td><td class="muted">${esc(x.link || "")}</td><td>${x.active ? '<span class="pill ok">Live</span>' : '<span class="pill">Off</span>'}</td>
-          <td><div style="display:flex;gap:6px"><button class="btn btn-sm" data-be="${x.id}">Edit</button><button class="btn btn-sm" data-bd="${x.id}" style="color:#c62828">Delete</button></div></td></tr>`).join("") || `<tr><td colspan="7" class="empty-sm">No banners.</td></tr>`}</tbody></table></div></div>
+        <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Photo</th><th>Order</th><th>Title</th><th>Theme</th><th>Department</th><th>Link</th><th>Status</th><th></th></tr></thead><tbody>
+        ${b.items.map((x) => `<tr><td>${x.image_url ? `<img src="${esc(x.image_url)}" alt="" style="width:56px;height:56px;object-fit:cover;border-radius:8px;display:block">` : `<span class="muted">Auto</span>`}</td><td>${x.sort}</td><td class="pname">${esc(x.title)}<div class="muted">${esc(x.subtitle || "")}</div></td><td><span class="pill">${esc(x.theme)}</span></td><td>${esc(x.department || "All")}</td><td class="muted">${esc(x.link || "")}</td><td>${x.active ? '<span class="pill ok">Live</span>' : '<span class="pill">Off</span>'}</td>
+          <td><div style="display:flex;gap:6px"><button class="btn btn-sm" data-bp="${x.id}">📷 Photo</button><button class="btn btn-sm" data-bv="${x.id}">🎬 Video${x.video_url ? " ✓" : ""}</button><button class="btn btn-sm" data-be="${x.id}">Edit</button><button class="btn btn-sm" data-bd="${x.id}" style="color:#c62828">Delete</button></div></td></tr>`).join("") || `<tr><td colspan="8" class="empty-sm">No banners.</td></tr>`}</tbody></table></div></div>
       <div class="card c12"><div class="card-h"><div><h2>Coupons & promotional offers</h2><div class="sub">Product-level discounts are set with MRP vs selling price on each product.</div></div><button class="btn btn-primary btn-sm" id="cadd">+ Add coupon</button></div>
         <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Code</th><th>Offer</th><th class="num">Min order</th><th>Valid</th><th class="num">Used</th><th>Status</th><th></th></tr></thead><tbody>
         ${c.items.map((x) => `<tr><td><b>${esc(x.code)}</b><div class="muted">${esc(x.description || "")}</div></td><td>${x.kind === "pct" ? `${x.value}% off${x.max_discount ? ` (max ${fmt.inr(x.max_discount)})` : ""}` : fmt.inr(x.value) + " off"}</td><td class="num">${fmt.inr(x.min_order)}</td>
@@ -1021,6 +1021,37 @@
       if (ok) { toast("Banner saved"); marketing(el); }
     };
     el.querySelector("#badd").onclick = () => bdlg();
+    el.querySelectorAll("[data-bp]").forEach((bt) => (bt.onclick = () => {
+      const x = b.items.find((y) => y.id == bt.dataset.bp);
+      modal({ title: "Banner photo · " + x.title, body: `<div style="text-align:center;margin-bottom:12px">${x.image_url ? `<img src="${esc(x.image_url)}" alt="" style="max-width:100%;max-height:220px;border-radius:12px">` : `<p class="muted" style="margin:0">No photo chosen. The store picks one automatically.</p>`}</div>
+        <label class="fld"><span>Choose a photo (JPG, PNG or WEBP, up to 5 MB)</span><input type="file" id="bph" accept="image/*"></label>
+        <p class="muted" style="font-size:13px;margin:6px 0 0">Tip: a square photo looks best.</p>`,
+        actions: [{ label: "Close", cls: "btn-ghost" },
+          ...(x.image_url ? [{ label: "Remove photo", cls: "", handler: async () => {
+            try { await api("DELETE", `/api/admin/banners/${x.id}/image`); toast("Photo removed"); marketing(el); return true; } catch (e) { toast(e.message, "err"); return false; } } }] : []),
+          { label: "Upload", cls: "btn-primary", handler: async (m) => {
+            const f = m.querySelector("#bph").files[0];
+            if (!f) { toast("Choose a photo first", "err"); return false; }
+            const fd = new FormData(); fd.append("file", f);
+            try { await api("POST", `/api/admin/banners/${x.id}/image`, fd); toast("Banner photo saved"); marketing(el); return true; } catch (e) { toast(e.message, "err"); return false; }
+          } }] });
+    }));
+    el.querySelectorAll("[data-bv]").forEach((bt) => (bt.onclick = () => {
+      const x = b.items.find((y) => y.id == bt.dataset.bv);
+      modal({ title: "Banner video · " + x.title, body: `<div style="text-align:center;margin-bottom:12px">${x.video_url ? `<video src="${esc(x.video_url)}" controls muted playsinline style="max-width:100%;max-height:220px;border-radius:12px"></video>` : `<p class="muted" style="margin:0">No video yet. The banner shows its photo.</p>`}</div>
+        <label class="fld"><span>Choose a video (MP4 or WEBM, up to 10 MB)</span><input type="file" id="bvf" accept="video/mp4,video/webm"></label>
+        <p class="muted" style="font-size:13px;margin:6px 0 0">Tip: a short 5–10 second video without sound works best. It plays silently and loops. Your banner photo (if set) shows while it loads.</p>`,
+        actions: [{ label: "Close", cls: "btn-ghost" },
+          ...(x.video_url ? [{ label: "Remove video", cls: "", handler: async () => {
+            try { await api("DELETE", `/api/admin/banners/${x.id}/video`); toast("Video removed"); marketing(el); return true; } catch (e) { toast(e.message, "err"); return false; } } }] : []),
+          { label: "Upload", cls: "btn-primary", handler: async (m) => {
+            const f = m.querySelector("#bvf").files[0];
+            if (!f) { toast("Choose a video first", "err"); return false; }
+            if (f.size > 10 * 1024 * 1024) { toast("Video is bigger than 10 MB", "err"); return false; }
+            const fd = new FormData(); fd.append("file", f);
+            try { await api("POST", `/api/admin/banners/${x.id}/video`, fd); toast("Banner video saved"); marketing(el); return true; } catch (e) { toast(e.message, "err"); return false; }
+          } }] });
+    }));
     el.querySelectorAll("[data-be]").forEach((bt) => (bt.onclick = () => bdlg(b.items.find((x) => x.id == bt.dataset.be))));
     el.querySelectorAll("[data-bd]").forEach((bt) => (bt.onclick = async () => { if (await confirmDialog("Delete banner", "Delete this banner?", { confirmLabel: "Delete", danger: true })) { await api("DELETE", "/api/admin/banners/" + bt.dataset.bd); toast("Banner deleted"); marketing(el); } }));
     const cdlg = async (x = { kind: "pct", active: 1 }) => {
