@@ -237,6 +237,110 @@ def add_product(ctx):
     return _product_out(db, db.one("SELECT * FROM products WHERE id=?", (pid,)), full=True)
 
 
+# ---------------------------------------------------------------- bulk product import (CSV)
+_PRODUCT_CSV_ALIASES = {
+    "name": "name", "item": "name", "item_name": "name", "product": "name", "product_name": "name",
+    "category": "category", "subcategory": "subcategory", "sub_category": "subcategory",
+    "price": "selling_price", "selling_price": "selling_price", "sell_price": "selling_price", "rate": "selling_price",
+    "mrp": "mrp", "cost": "cost_price", "cost_price": "cost_price", "purchase_price": "cost_price",
+    "stock": "stock", "quantity": "stock", "qty": "stock", "opening_stock": "stock",
+    "description": "description", "details": "description", "brand": "brand",
+    "sku": "sku", "item_code": "sku", "code": "sku",
+    "low_stock": "low_stock_threshold", "low_stock_alert": "low_stock_threshold", "low_stock_threshold": "low_stock_threshold",
+    "gst": "tax_rate", "tax": "tax_rate", "tax_rate": "tax_rate", "gst_rate": "tax_rate",
+    "max_per_order": "max_per_order", "status": "status", "featured": "featured",
+}
+
+
+class _RowCtx:
+    """Lets the normal product validator read a CSV row like a request body."""
+    def __init__(self, d):
+        self.d = d
+
+    def get(self, k, default=None):
+        v = self.d.get(k)
+        return default if v in (None, "") else v
+
+
+def _parse_product_csv(db, csv_text):
+    reader = csv.DictReader(io.StringIO(csv_text.strip().lstrip("\ufeff")))
+    heads = {}
+    for f in (reader.fieldnames or []):
+        key = re.sub(r"[^a-z0-9]+", "_", (f or "").strip().lower()).strip("_")
+        if key in _PRODUCT_CSV_ALIASES:
+            heads[f] = _PRODUCT_CSV_ALIASES[key]
+    got = set(heads.values())
+    missing = [n for n in ("name", "category", "selling_price") if n not in got]
+    if missing:
+        raise ApiError(400, "CSV header must include: name, category, price (and optionally stock, description, brand, mrp, sku, "
+                            "low_stock, gst, cost_price, status). Missing: " + ", ".join(missing))
+    cats = {}
+    for c in db.all("SELECT id, name, parent_id FROM categories"):
+        cats[(c["parent_id"] or 0, (c["name"] or "").strip().lower())] = c["id"]
+    rows, errors, seen_sku = [], [], set()
+    for n, raw in enumerate(reader, start=2):
+        r = {heads[k]: (v or "").strip() for k, v in raw.items() if k in heads}
+        if not any(r.values()):
+            continue
+        if n > 2001:
+            raise ApiError(400, "CSV is limited to 2000 products at a time. Split the file and import in parts.")
+        try:
+            cname = r.get("category", "").lower()
+            cid = cats.get((0, cname))
+            if not cid:
+                raise ApiError(400, f"category '{r.get('category', '')}' not found - create it first under Categories")
+            sub_id = None
+            if r.get("subcategory"):
+                sub_id = cats.get((cid, r["subcategory"].lower()))
+                if not sub_id:
+                    raise ApiError(400, f"subcategory '{r['subcategory']}' not found under {r['category']}")
+            body = {k: v for k, v in r.items() if k not in ("category", "subcategory", "stock")}
+            body["category_id"], body["subcategory_id"] = cid, sub_id
+            body["status"] = (r.get("status") or "active").lower().replace(" ", "_")
+            body["featured"] = 1 if r.get("featured", "").lower() in ("1", "yes", "y", "true") else 0
+            for k in ("selling_price", "mrp", "cost_price"):
+                if body.get(k):
+                    body[k] = body[k].replace(",", "").replace("\u20b9", "").replace("Rs.", "").replace("Rs", "").strip()
+            d = _product_fields(_RowCtx(body), db)
+            stock = int(num(r.get("stock") or 0, "Stock", 0, 10_000_000, integer=True))
+            if d["sku"] in seen_sku:
+                raise ApiError(400, f"SKU {d['sku']} appears twice in the file")
+            seen_sku.add(d["sku"])
+        except ApiError as e:
+            errors.append({"line": n, "error": e.message, "name": r.get("name", "")})
+            continue
+        rows.append({"line": n, "d": d, "stock": stock})
+    return rows, errors
+
+
+@api("POST", "/api/admin/products/import/preview", auth="admin", perm="products")
+def products_import_preview(ctx):
+    rows, errors = _parse_product_csv(get_db(), text(ctx.get("csv"), "CSV", max_len=3_000_000))
+    return {"rows": [{"line": r["line"], "name": r["d"]["name"], "sku": r["d"]["sku"], "price": r["d"]["selling_price"],
+                      "stock": r["stock"], "status": r["d"]["status"]} for r in rows[:300]],
+            "ok": len(rows), "errors": errors[:300], "error_count": len(errors)}
+
+
+@api("POST", "/api/admin/products/import/commit", auth="admin", perm="products")
+def products_import_commit(ctx):
+    db = get_db()
+    rows, errors = _parse_product_csv(db, text(ctx.get("csv"), "CSV", max_len=3_000_000))
+    if errors:
+        raise ApiError(400, f"Fix {len(errors)} error(s) before importing. Nothing was added.", {"errors": errors[:100]})
+    if not rows:
+        raise ApiError(400, "No products found in the file.")
+    t = now_iso()
+    with transaction(db):
+        for r in rows:
+            d = dict(r["d"])
+            d.update({"slug": unique_slug("products", d["name"]), "physical_stock": 0, "created_at": t, "updated_at": t, "is_sample": 0})
+            pid = db.insert("products", d)
+            if r["stock"]:
+                inventory.admin_adjust(pid, "received", r["stock"], "Opening stock (CSV import)", ctx.uid)
+        audit(ctx.uid, "products_import", "product", None, f"{len(rows)} products", ctx.ip)
+    return {"ok": True, "imported": len(rows)}
+
+
 @api("PUT", "/api/admin/products/{pid:int}", auth="admin", perm="products")
 def edit_product(ctx):
     db = get_db()
@@ -974,7 +1078,7 @@ def _banner_fields(ctx):
     link = text(ctx.get("link"), "Link", required=False, max_len=200)
     if link and not (link.startswith("#/") or link.startswith("/")):
         raise ApiError(400, "Banner links must be internal (start with #/).")
-    return {"title": text(ctx.get("title"), "Title", required=False, max_len=80) or "", "subtitle": text(ctx.get("subtitle"), "Subtitle", required=False, max_len=160),
+    return {"title": text(ctx.get("title"), "Title", max_len=80), "subtitle": text(ctx.get("subtitle"), "Subtitle", required=False, max_len=160),
             "cta": text(ctx.get("cta"), "Button text", required=False, max_len=30), "link": link, "theme": theme,
             "department": text(ctx.get("department"), "Department", required=False, max_len=40),
             "active": 1 if ctx.get("active", True) else 0, "sort": int(num(ctx.get("sort", 0), "Order", integer=True, required=False) or 0),
@@ -986,63 +1090,18 @@ def add_banner(ctx):
     db = get_db()
     bid = db.insert("banners", {**_banner_fields(ctx), "created_at": now_iso()})
     audit(ctx.uid, "banner_create", "banner", bid, None, ctx.ip)
-    return {"ok": True, "id": bid}
+    return {"ok": True}
 
 
 @api("PUT", "/api/admin/banners/{bid:int}", auth="admin", perm="marketing")
 def edit_banner(ctx):
     get_db().update("banners", ctx.params["bid"], _banner_fields(ctx))
-    return {"ok": True, "id": ctx.params["bid"]}
-
-
-def _drop_banner_file(url):
-    if url and url.startswith("/uploads/banners/"):
-        delete_file("banners/" + url.rsplit("/", 1)[-1])
-
-
-@api("POST", "/api/admin/banners/{bid:int}/image", auth="admin", perm="marketing", multipart=True)
-def banner_image(ctx):
-    """Upload or replace the photo of a banner (JPG, PNG, WEBP or GIF, max 5 MB)."""
-    db = get_db()
-    b = db.one("SELECT * FROM banners WHERE id=?", (ctx.params["bid"],))
-    if not b:
-        raise ApiError(404, "Banner not found.")
-    files = ctx.form.getlist("file") if ctx.form else []
-    if not files:
-        raise ApiError(400, "Choose a photo.")
-    f = files[0]
-    f.file.seek(0)
-    data = f.file.read(config.MAX_UPLOAD_BYTES + 1)
-    if len(data) > config.MAX_UPLOAD_BYTES:
-        raise ApiError(400, "Photo is larger than 5 MB. Please choose a smaller one.")
-    ext = _sniff(data)
-    if not ext:
-        raise ApiError(400, "Only JPG, PNG, WEBP or GIF photos are allowed.")
-    name = f"{b['id']}_{secrets.token_hex(8)}.{ext}"
-    save_file(f"banners/{name}", {"jpg": "image/jpeg", "png": "image/png", "gif": "image/gif", "webp": "image/webp"}[ext], data)
-    db.run("UPDATE banners SET image_url=? WHERE id=?", (f"/uploads/banners/{name}", b["id"]))
-    _drop_banner_file(b["image_url"])
-    audit(ctx.uid, "banner_photo", "banner", b["id"], None, ctx.ip)
-    return {"ok": True, "image_url": f"/uploads/banners/{name}"}
-
-
-@api("DELETE", "/api/admin/banners/{bid:int}/image", auth="admin", perm="marketing")
-def banner_image_remove(ctx):
-    db = get_db()
-    b = db.one("SELECT * FROM banners WHERE id=?", (ctx.params["bid"],))
-    if not b:
-        raise ApiError(404, "Banner not found.")
-    db.run("UPDATE banners SET image_url=NULL WHERE id=?", (b["id"],))
-    _drop_banner_file(b["image_url"])
     return {"ok": True}
 
 
 @api("DELETE", "/api/admin/banners/{bid:int}", auth="admin", perm="marketing")
 def delete_banner(ctx):
-    b = get_db().one("SELECT image_url FROM banners WHERE id=?", (ctx.params["bid"],))
     get_db().run("DELETE FROM banners WHERE id=?", (ctx.params["bid"],))
-    if b:
-        _drop_banner_file(b["image_url"])
     audit(ctx.uid, "banner_delete", "banner", ctx.params["bid"], None, ctx.ip)
     return {"ok": True}
 
