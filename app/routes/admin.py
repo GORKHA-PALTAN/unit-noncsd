@@ -1115,7 +1115,7 @@ def delete_expense(ctx):
 # ================================================================ marketing
 @api("GET", "/api/admin/banners", auth="admin", perm="marketing")
 def banners(ctx):
-    return {"items": get_db().all("SELECT * FROM banners ORDER BY sort, id"), "announcement": get_settings()["announcement"]}
+    return {"items": get_db().all("SELECT b.*, v.url AS video_url FROM banners b LEFT JOIN banner_videos v ON v.banner_id=b.id ORDER BY b.sort, b.id"), "announcement": get_settings()["announcement"]}
 
 
 def _banner_fields(ctx):
@@ -1146,9 +1146,110 @@ def edit_banner(ctx):
     return {"ok": True}
 
 
+@api("POST", "/api/admin/banners/{bid:int}/image", auth="admin", perm="marketing", multipart=True)
+def banner_image_set(ctx):
+    db = get_db()
+    bid = ctx.params["bid"]
+    brow = db.one("SELECT id, title, image_url FROM banners WHERE id=?", (bid,))
+    if not brow:
+        raise ApiError(404, "Banner not found.")
+    f = ctx.form.get("file") if ctx.form else None
+    if f is None or not hasattr(f, "file"):
+        raise ApiError(400, "Choose a photo first.")
+    f.file.seek(0)
+    data = f.file.read(config.MAX_UPLOAD_BYTES + 1)
+    if len(data) > config.MAX_UPLOAD_BYTES:
+        raise ApiError(400, "Photo is larger than 5 MB.")
+    ext = _sniff(data)
+    if not ext:
+        raise ApiError(400, "Only JPG, PNG, WEBP or GIF photos are allowed.")
+    name = f"{bid}_{secrets.token_hex(8)}.{ext}"
+    save_file(f"banners/{name}", {"jpg": "image/jpeg", "png": "image/png", "gif": "image/gif", "webp": "image/webp"}[ext], data)
+    url = f"/uploads/banners/{name}"
+    db.run("UPDATE banners SET image_url=? WHERE id=?", (url, bid))
+    if brow["image_url"] and brow["image_url"].startswith("/uploads/banners/"):
+        delete_file(brow["image_url"].replace("/uploads/", "", 1))
+    audit(ctx.uid, "banner_photo", "banner", bid, brow["title"], ctx.ip)
+    return {"ok": True, "image": url}
+
+
+@api("DELETE", "/api/admin/banners/{bid:int}/image", auth="admin", perm="marketing")
+def banner_image_remove(ctx):
+    db = get_db()
+    bid = ctx.params["bid"]
+    brow = db.one("SELECT image_url FROM banners WHERE id=?", (bid,))
+    if brow and brow["image_url"]:
+        db.run("UPDATE banners SET image_url=NULL WHERE id=?", (bid,))
+        if brow["image_url"].startswith("/uploads/banners/"):
+            delete_file(brow["image_url"].replace("/uploads/", "", 1))
+    audit(ctx.uid, "banner_photo_remove", "banner", bid, None, ctx.ip)
+    return {"ok": True}
+
+
+MAX_VIDEO_BYTES = 10 * 1024 * 1024
+
+
+def _vsniff(data):
+    if data[4:8] == b"ftyp":
+        return "mp4"
+    if data[:4] == b"\x1a\x45\xdf\xa3":
+        return "webm"
+    return None
+
+
+@api("POST", "/api/admin/banners/{bid:int}/video", auth="admin", perm="marketing", multipart=True)
+def banner_video_set(ctx):
+    db = get_db()
+    bid = ctx.params["bid"]
+    brow = db.one("SELECT id, title FROM banners WHERE id=?", (bid,))
+    if not brow:
+        raise ApiError(404, "Banner not found.")
+    f = ctx.form.get("file") if ctx.form else None
+    if f is None or not hasattr(f, "file"):
+        raise ApiError(400, "Choose a video first.")
+    f.file.seek(0)
+    data = f.file.read(MAX_VIDEO_BYTES + 1)
+    if len(data) > MAX_VIDEO_BYTES:
+        raise ApiError(400, "Video is larger than 10 MB. Please use a shorter or smaller video.")
+    ext = _vsniff(data)
+    if not ext:
+        raise ApiError(400, "Only MP4 or WEBM videos are allowed.")
+    name = f"{bid}_{secrets.token_hex(8)}.{ext}"
+    save_file(f"banners/{name}", {"mp4": "video/mp4", "webm": "video/webm"}[ext], data)
+    url = f"/uploads/banners/{name}"
+    old = db.one("SELECT url FROM banner_videos WHERE banner_id=?", (bid,))
+    if old:
+        db.run("UPDATE banner_videos SET url=?, updated_at=? WHERE banner_id=?", (url, now_iso(), bid))
+        delete_file(old["url"].replace("/uploads/", "", 1))
+    else:
+        db.run("INSERT INTO banner_videos(banner_id, url, updated_at) VALUES (?, ?, ?)", (bid, url, now_iso()))
+    audit(ctx.uid, "banner_video", "banner", bid, brow["title"], ctx.ip)
+    return {"ok": True, "video": url}
+
+
+@api("DELETE", "/api/admin/banners/{bid:int}/video", auth="admin", perm="marketing")
+def banner_video_remove(ctx):
+    db = get_db()
+    bid = ctx.params["bid"]
+    old = db.one("SELECT url FROM banner_videos WHERE banner_id=?", (bid,))
+    if old:
+        db.run("DELETE FROM banner_videos WHERE banner_id=?", (bid,))
+        delete_file(old["url"].replace("/uploads/", "", 1))
+    audit(ctx.uid, "banner_video_remove", "banner", bid, None, ctx.ip)
+    return {"ok": True}
+
+
 @api("DELETE", "/api/admin/banners/{bid:int}", auth="admin", perm="marketing")
 def delete_banner(ctx):
-    get_db().run("DELETE FROM banners WHERE id=?", (ctx.params["bid"],))
+    db = get_db()
+    ov = db.one("SELECT url FROM banner_videos WHERE banner_id=?", (ctx.params["bid"],))
+    if ov:
+        db.run("DELETE FROM banner_videos WHERE banner_id=?", (ctx.params["bid"],))
+        delete_file(ov["url"].replace("/uploads/", "", 1))
+    old = db.one("SELECT image_url FROM banners WHERE id=?", (ctx.params["bid"],))
+    if old and old["image_url"] and old["image_url"].startswith("/uploads/banners/"):
+        delete_file(old["image_url"].replace("/uploads/", "", 1))
+    db.run("DELETE FROM banners WHERE id=?", (ctx.params["bid"],))
     audit(ctx.uid, "banner_delete", "banner", ctx.params["bid"], None, ctx.ip)
     return {"ok": True}
 

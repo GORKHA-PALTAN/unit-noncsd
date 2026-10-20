@@ -80,6 +80,9 @@ def home(ctx):
                          "ORDER BY sort, id", (dept,))
     else:
         banners = db.all("SELECT * FROM banners WHERE active=1 AND placement='hero' ORDER BY sort, id")
+    vids = {r["banner_id"]: r["url"] for r in db.all("SELECT banner_id, url FROM banner_videos")}
+    for b in banners:
+        b["video_url"] = vids.get(b["id"])
     for b in banners:  # illustrate each banner with a product from the category it links to
         b["image_url"] = b["image_url"] or None
         if not b["image_url"] and b["link"] and b["link"].startswith("#/c/"):
@@ -105,7 +108,7 @@ def home(ctx):
     tree = category_tree(db)
     popular = sorted([c for c in tree if not dept or c["department"] == dept], key=lambda c: -c["count"])
     return {
-        "banners": [{k: b[k] for k in ("id", "title", "subtitle", "cta", "link", "theme", "image_url")} for b in banners],
+        "banners": [{k: b[k] for k in ("id", "title", "subtitle", "cta", "link", "theme", "image_url", "video_url")} for b in banners],
         "featured": section("p.featured DESC, p.rating_avg DESC", 10, "AND p.featured=1"),
         "best_sellers": section("p.units_sold DESC", 10),
         "new_arrivals": section("p.created_at DESC", 10),
