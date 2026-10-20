@@ -44,6 +44,10 @@ CREATE TABLE IF NOT EXISTS categories (
   default_tax_rate {REAL} DEFAULT 18, created_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS category_images (
+  category_id INTEGER PRIMARY KEY REFERENCES categories(id) ON DELETE CASCADE, url TEXT NOT NULL, updated_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS products (
   id {PK}, name TEXT NOT NULL, slug TEXT UNIQUE NOT NULL, description TEXT,
   category_id INTEGER REFERENCES categories(id), subcategory_id INTEGER REFERENCES categories(id),
