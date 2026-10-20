@@ -34,7 +34,7 @@ def env_bool(name, default=False):
     return v.lower() in ("1", "true", "yes", "on")
 
 
-APP_NAME = env("APP_NAME", "Unit Non-CSD App")
+APP_NAME = env("APP_NAME", "PVC Paltan Store")
 HOST = env("HOST", "0.0.0.0")  # 0.0.0.0 = reachable from phones on the same Wi-Fi; 127.0.0.1 = this computer only
 PORT = int(env("PORT", "8000"))
 DEBUG = env_bool("DEBUG", False)

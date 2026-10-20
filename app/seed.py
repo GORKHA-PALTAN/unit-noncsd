@@ -130,6 +130,12 @@ def ensure_base():
     if not ph.exists():
         ph.parent.mkdir(parents=True, exist_ok=True)
         ph.write_text(PLACEHOLDER, encoding="utf-8")
+    # one-time rename of the store (only if the owner never chose a different name)
+    if not db.one("SELECT key FROM settings WHERE key=?", ("_renamed_paltan",)):
+        row = db.one("SELECT value FROM settings WHERE key=?", ("store_name",))
+        if row and str(row["value"]).strip('"') in ("Unit Non-CSD App", "Unit Non-CSD Store", "Unit Non-CSD", "PVC Patan Non-CSD", "PVC Patan Non-CSD App"):
+            db.run("UPDATE settings SET value=? WHERE key=?", (jdump(config.APP_NAME), "store_name"))
+        db.run("INSERT INTO settings(key, value) VALUES (?, ?)", ("_renamed_paltan", jdump(1)))
     return created_owner
 
 
