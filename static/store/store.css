@@ -59,7 +59,12 @@ body { padding-bottom: calc(72px + env(safe-area-inset-bottom)); background: #ff
 .hero-slide p { opacity: .9; font-size: 16px; max-width: 34ch; }
 .hero-slide .btn { margin-top: 10px; background: #fff; color: var(--ink); border-color: #fff; }
 .hero-art { justify-self: end; width: min(44vw, 300px); aspect-ratio: 1; border-radius: 50%; background: rgba(255,255,255,.12); display: grid; place-items: center; }
-.hero-art img { width: 78%; border-radius: 16px; transform: rotate(-6deg); box-shadow: 0 16px 30px rgba(0,0,0,.25); }
+.hero-art img { width: 78%; aspect-ratio: 1; object-fit: cover; border-radius: 16px; transform: rotate(-6deg); box-shadow: 0 16px 30px rgba(0,0,0,.25); }
+.hero-slide.has-video { min-height: 240px; }
+.hero-slide.has-video .hero-art { display: none; }
+.hero-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: 0; }
+.hero-slide.has-video::before { content: ""; position: absolute; inset: 0; z-index: 1; background: linear-gradient(90deg, rgba(0,0,0,.62), rgba(0,0,0,.15)); }
+.hero-slide .hero-txt { position: relative; z-index: 2; }
 .th-navy { background: linear-gradient(120deg, #2b3047, #3f4870); } .th-teal { background: linear-gradient(120deg, #156b6b, #1f8a8a); }
 .th-coral { background: linear-gradient(120deg, #c2412d, #ef6c57); } .th-gold { background: linear-gradient(120deg, #8a5a00, #c98500); }
 .th-plum { background: linear-gradient(120deg, #5b2a6e, #8e44ad); } .th-slate { background: linear-gradient(120deg, #37474f, #607d8b); }
@@ -271,10 +276,3 @@ body.drawer-open { overflow: hidden; }
 .upi-steps li { margin-bottom: 4px; }
 .upi-pay .fld { text-align: left; }
 .upi-note { margin-top: 10px; padding: 10px 12px; border-radius: 10px; background: #fff7e0; font-size: 14px; }
-
-.hero-photo { display: block; padding: 0; text-decoration: none; color: #fff; min-height: 220px; }
-.hero-photo .hero-bg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
-.hero-photo.has-text::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, rgba(0,0,0,.6), rgba(0,0,0,.15) 65%, transparent); }
-.hero-photo .hero-txt { position: relative; z-index: 1; padding: 24px 20px; max-width: 60%; height: 100%; display: flex; flex-direction: column; justify-content: center; }
-.hero-photo .btn { align-self: flex-start; }
-@media (min-width: 900px) { .hero-photo { min-height: 320px; } .hero-photo .hero-txt { padding: 40px 64px; } }

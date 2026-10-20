@@ -248,9 +248,10 @@
     main.innerHTML = `
       <section class="hero" aria-roledescription="carousel" aria-label="Promotions">
         <div class="hero-track" id="hero-track">${banners.map((b, i) => `
-          <div class="hero-slide th-${esc(b.theme || "navy")}" role="group" aria-label="${i + 1} of ${banners.length}">
-            <div><h2>${esc(b.title)}</h2>${b.subtitle ? `<p>${esc(b.subtitle)}</p>` : ""}${b.cta ? `<a class="btn" href="${esc(b.link || "#/search")}">${esc(b.cta)}</a>` : ""}</div>
-            <div class="hero-art">${b.image_url || heroImgs[i] ? `<img src="${esc(b.image_url || heroImgs[i])}" alt="">` : ""}</div></div>`).join("")}</div>
+          <div class="hero-slide th-${esc(b.theme || "navy")}${b.video_url ? " has-video" : ""}" role="group" aria-label="${i + 1} of ${banners.length}">
+            ${b.video_url ? `<video class="hero-video" src="${esc(b.video_url)}" ${b.image_url ? `poster="${esc(b.image_url)}"` : ""} muted loop playsinline preload="metadata" ${i === 0 ? "autoplay" : ""}></video>` : ""}
+            <div class="hero-txt"><h2>${esc(b.title)}</h2>${b.subtitle ? `<p>${esc(b.subtitle)}</p>` : ""}${b.cta ? `<a class="btn" href="${esc(b.link || "#/search")}">${esc(b.cta)}</a>` : ""}</div>
+            <div class="hero-art">${b.video_url ? "" : b.image_url || heroImgs[i] ? `<img src="${esc(b.image_url || heroImgs[i])}" alt="">` : ""}</div></div>`).join("")}</div>
         ${banners.length > 1 ? `<div class="dots" id="hero-dots">${banners.map((_, i) => `<button aria-label="Slide ${i + 1}" class="${i ? "" : "on"}"></button>`).join("")}</div>` : ""}
       </section>
       <section class="sec"><div class="sec-h"><h2>Shop by category</h2><a href="#/categories">All categories ›</a></div>
@@ -266,11 +267,15 @@
       <section class="sec"><div class="sec-h"><h2>Popular categories</h2></div>
         <div class="subcat-row">${h.popular_categories.map((c) => `<a href="#/c/${c.slug}">${esc(c.name)} · ${c.count}</a>`).join("")}</div></section>`;
     bindCards(main);
+    const vids = [...document.querySelectorAll(".hero-video")];
+    const playOnly = (n) => vids.forEach((v) => { const on = v.closest(".hero-slide") === document.querySelectorAll(".hero-slide")[n]; if (on) { v.play().catch(() => {}); } else { v.pause(); } });
+    vids.forEach((v) => { v.muted = true; });
+    playOnly(0);
     if (banners.length > 1) {
       let i = 0;
       const track = document.getElementById("hero-track");
       const dots = [...document.querySelectorAll("#hero-dots button")];
-      const go = (n) => { i = (n + banners.length) % banners.length; track.style.transform = `translateX(-${i * 100}%)`; dots.forEach((d, k) => d.classList.toggle("on", k === i)); };
+      const go = (n) => { i = (n + banners.length) % banners.length; track.style.transform = `translateX(-${i * 100}%)`; playOnly(i); dots.forEach((d, k) => d.classList.toggle("on", k === i)); };
       dots.forEach((d, k) => (d.onclick = () => { go(k); clearInterval(S.heroTimer); }));
       let sx = null;
       track.addEventListener("touchstart", (e) => (sx = e.touches[0].clientX), { passive: true });
