@@ -73,7 +73,7 @@ async def razorpay_webhook(request: Request):
         return JSONResponse({"error": e.message}, status_code=e.status)
 
 
-UPLOAD_TYPES = {".jpg": "image/jpeg", ".png": "image/png", ".gif": "image/gif", ".webp": "image/webp", ".svg": "image/svg+xml"}
+UPLOAD_TYPES = {".jpg": "image/jpeg", ".png": "image/png", ".gif": "image/gif", ".webp": "image/webp", ".svg": "image/svg+xml", ".mp4": "video/mp4", ".webm": "video/webm"}
 
 
 async def uploads(request):
@@ -94,6 +94,7 @@ async def uploads(request):
     try:
         disk.parent.mkdir(parents=True, exist_ok=True)
         disk.write_bytes(data)  # re-create the cache
+        return FileResponse(disk, media_type=mime, headers={"Cache-Control": "public, max-age=86400"})
     except OSError:
         pass
     return Response(data, media_type=mime, headers={"Cache-Control": "public, max-age=86400"})
