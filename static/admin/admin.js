@@ -1,4 +1,4 @@
-/* Unit Non-CSD App — owner / staff dashboard. Every action is authorised again on the server. */
+/* PVC Paltan Store — owner / staff dashboard. Every action is authorised again on the server. */
 (function () {
   const { api, esc, fmt, toast, modal, confirmDialog, promptDialog, formData, debounce } = NC;
   const C = NCCharts;
@@ -44,7 +44,7 @@
     if (!me.user) return loginScreen();
     NC.state.csrf = me.user.csrf;
     if (!["owner", "staff"].includes(me.user.role)) {
-      app.innerHTML = `<div class="login"><div class="login-box"><img src="/static/common/logo.svg" alt=""><h1>Admin access required</h1>
+      app.innerHTML = `<div class="login"><div class="login-box"><img src="/static/common/gurkha-logo.svg" alt="" style="display:block;margin:0 auto 12px;width:auto;height:150px"><h1>Admin access required</h1>
         <p>You are signed in as a customer (${esc(me.user.email)}). Sign out and sign in with an owner or staff account.</p>
         <button class="btn btn-primary btn-block" id="lo">Sign out</button><p style="margin-top:12px"><a href="/" style="color:var(--teal)">← Back to store</a></p></div></div>`;
       document.getElementById("lo").onclick = async () => { await api("POST", "/api/auth/logout"); location.reload(); };
@@ -57,8 +57,8 @@
   }
 
   function loginScreen() {
-    app.innerHTML = `<div class="login"><form class="login-box" id="lf"><img src="/static/common/logo.svg" alt=""><h1>Owner & staff sign-in</h1>
-      <p>Unit Non-CSD App dashboard</p>
+    app.innerHTML = `<div class="login"><form class="login-box" id="lf"><img src="/static/common/gurkha-logo.svg" alt="" style="display:block;margin:0 auto 12px;width:auto;height:150px"><h1>Owner & staff sign-in</h1>
+      <p>PVC Paltan Store dashboard</p>
       <label class="fld"><span>Email</span><input name="email" type="email" required autocomplete="username"></label>
       <label class="fld"><span>Password</span><input name="password" type="password" required autocomplete="current-password"></label>
       <div class="issue" id="le" role="alert" style="color:#c62828;font-weight:600;margin-bottom:10px" hidden></div>
@@ -79,7 +79,7 @@
 
   function shell() {
     app.innerHTML = `<div class="shell"><aside class="side" id="side">
-      <div class="side-brand"><img src="/static/common/logo.svg" alt=""><div><b>Unit Non-CSD</b><small>${A.me.role === "owner" ? "Owner dashboard" : "Staff dashboard"}</small></div></div>
+      <div class="side-brand"><img src="/static/common/logo.svg" alt=""><div><b style="font-size:14px;white-space:nowrap">PVC Paltan Store</b><small>${A.me.role === "owner" ? "Owner dashboard" : "Staff dashboard"}</small></div></div>
       <nav aria-label="Dashboard">${NAV.map(([g, items]) => {
         const vis = items.filter((n) => can(n[2]));
         return vis.length ? `<div class="grp">${g}</div>${vis.map((n) => `<a href="#/${n[0]}" data-nav="${n[0]}">${n[3]}<span>${n[1]}</span>${["orders", "returns", "inventory"].includes(n[0]) ? `<span class="n" data-badge="${n[0]}" hidden></span>` : ""}</a>`).join("")}` : "";
@@ -118,7 +118,7 @@
     document.getElementById("side").classList.remove("open");
     document.querySelectorAll(".side a[data-nav]").forEach((a) => a.classList.toggle("on", a.dataset.nav === page));
     document.getElementById("ttl").textContent = TITLES[page] || "Dashboard";
-    document.title = (TITLES[page] || "Dashboard") + " · Unit Non-CSD";
+    document.title = (TITLES[page] || "Dashboard") + " · PVC Paltan Store";
     const el = document.getElementById("content");
     el.innerHTML = `<div class="page-loading"><span class="spin lg"></span></div>`;
     const navItem = NAV.flatMap((g) => g[1]).find((n) => n[0] === page);
@@ -583,6 +583,33 @@
         } }] });
   }
 
+  function importProducts(reload) {
+    const sample = "name,category,price,stock,description,brand,mrp,sku,low_stock,gst\nSample Biscuit 100g,Groceries,20,50,Tasty biscuit,Parle,25,BISC-100,10,5\nSample Soap,Toiletries,35,100,Bathing soap,Lifebuoy,40,SOAP-01,10,18\n";
+    modal({ title: "Import products (CSV)", wide: true,
+      body: `<p style="font-size:14px">Columns: <code>name, category, price</code> are required. Optional: <code>stock, description, brand, mrp, sku, low_stock, gst, cost_price, subcategory, status</code>. The category name must already exist (Categories page). Products are added as <b>active</b> unless <code>status</code> says otherwise. Photos are added afterwards, product by product.</p>
+        <p><a href="#" id="isample">⬇ Download a sample CSV</a></p>
+        <label class="fld"><span>CSV file</span><input type="file" id="ifile" accept=".csv,text/csv"></label>
+        <label class="fld"><span>…or paste CSV</span><textarea id="itext" rows="5"></textarea></label><div id="iprev"></div>`,
+      onOpen: (m) => {
+        m.querySelector("#ifile").onchange = async (e) => { const f = e.target.files[0]; if (f) m.querySelector("#itext").value = await f.text(); };
+        m.querySelector("#isample").onclick = (e) => { e.preventDefault(); const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([sample], { type: "text/csv" })); a.download = "products-sample.csv"; a.click(); };
+      },
+      actions: [{ label: "Close", cls: "btn-ghost" },
+        { label: "Preview", cls: "", handler: async (m) => {
+          try {
+            const r = await api("POST", "/api/admin/products/import/preview", { csv: m.querySelector("#itext").value });
+            m.querySelector("#iprev").innerHTML = `<div class="kpis">${kpi("Ready to add", r.ok, "", "good")}${kpi("Errors", r.error_count, "", r.error_count ? "bad" : "good")}</div>
+              ${r.errors.length ? `<div class="tbl-wrap" style="max-height:180px;margin-bottom:10px"><table class="tbl"><thead><tr><th>Line</th><th>Item</th><th>Problem</th></tr></thead><tbody>${r.errors.map((x) => `<tr><td>${x.line}</td><td>${esc(x.name || "")}</td><td style="color:#c62828">${esc(x.error)}</td></tr>`).join("")}</tbody></table></div>` : ""}
+              <div class="tbl-wrap" style="max-height:220px"><table class="tbl"><thead><tr><th>Line</th><th>Name</th><th>SKU</th><th>Price</th><th>Stock</th></tr></thead><tbody>${r.rows.map((x) => `<tr><td>${x.line}</td><td>${esc(x.name)}</td><td>${esc(x.sku)}</td><td>${x.price}</td><td>${x.stock}</td></tr>`).join("")}</tbody></table></div>`;
+          } catch (e) { toast(e.message, "err"); }
+          return false;
+        } },
+        { label: "Import", cls: "btn-primary", handler: async (m) => {
+          try { const r = await api("POST", "/api/admin/products/import/commit", { csv: m.querySelector("#itext").value }); toast(`Added ${r.imported} products`); reload(); return true; }
+          catch (e) { toast(e.message, "err"); return false; }
+        } }] });
+  }
+
   // ------------------------------------------------------------------ PRODUCTS
   async function products(el, parts, q) {
     if (parts[0] === "new") return productForm(el, null);
@@ -594,7 +621,7 @@
       <select id="pc"><option value="">All categories</option>${cats.filter((c) => !c.parent_id).map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join("")}</select>
       <select id="pstock"><option value="">Any stock</option><option value="low">Low stock</option><option value="out">Out of stock</option></select>
       <select id="psort"><option value="">Recently updated</option><option value="name">Name</option><option value="price">Price</option><option value="stock">Available stock</option><option value="sold">Units sold</option></select>
-      <span class="grow"></span>${can("reports") ? `<button class="btn btn-sm" id="pexp">⬇ Export</button>` : ""}${can("products") ? `<a class="btn btn-primary btn-sm" href="#/products/new">+ Add product</a>` : ""}</div><div id="plist"></div>`;
+      <span class="grow"></span>${can("reports") ? `<button class="btn btn-sm" id="pexp">⬇ Export</button>` : ""}${can("products") ? `<button class="btn btn-sm" id="pimp">⬆ Import CSV</button><a class="btn btn-primary btn-sm" href="#/products/new">+ Add product</a>` : ""}</div><div id="plist"></div>`;
     el.querySelector("#pst").value = st.status; el.querySelector("#pstock").value = st.stock;
     const load = async () => {
       const box = el.querySelector("#plist");
@@ -623,6 +650,7 @@
     el.querySelector("#pq").oninput = debounce((e) => { st.q = e.target.value.trim(); st.page = 1; load(); });
     [["#pst", "status"], ["#pc", "category"], ["#pstock", "stock"], ["#psort", "sort"]].forEach(([s, k]) => (el.querySelector(s).onchange = (e) => { st[k] = e.target.value; st.page = 1; load(); }));
     const ex = el.querySelector("#pexp"); if (ex) ex.onclick = () => download("/api/admin/export/products?" + rq());
+    const im = el.querySelector("#pimp"); if (im) im.onclick = () => importProducts(() => load());
     await load();
   }
 
@@ -956,9 +984,9 @@
     el.innerHTML = `<div class="cards">
       <div class="card c12"><h2>Announcement strip</h2><div class="sub">The teal bar under the store header</div><div style="display:flex;gap:8px"><input class="inp" id="ann" value="${esc(b.announcement || "")}" maxlength="160"><button class="btn btn-primary" id="anns">Save</button></div></div>
       <div class="card c12"><div class="card-h"><div><h2>Home page banners</h2><div class="sub">Shown as the hero carousel. Leave department empty to show on every tab.</div></div><button class="btn btn-primary btn-sm" id="badd">+ Add banner</button></div>
-        <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Order</th><th>Photo</th><th>Title</th><th>Theme</th><th>Department</th><th>Link</th><th>Status</th><th></th></tr></thead><tbody>
-        ${b.items.map((x) => `<tr><td>${x.sort}</td><td>${x.image_url ? `<img class="ban-thumb" src="${esc(x.image_url)}" alt="">` : '<span class="muted">—</span>'}</td><td class="pname">${esc(x.title || "(photo only)")}<div class="muted">${esc(x.subtitle || "")}</div></td><td><span class="pill">${esc(x.theme)}</span></td><td>${esc(x.department || "All")}</td><td class="muted">${esc(x.link || "")}</td><td>${x.active ? '<span class="pill ok">Live</span>' : '<span class="pill">Off</span>'}</td>
-          <td><div style="display:flex;gap:6px"><button class="btn btn-sm" data-be="${x.id}">Edit</button><button class="btn btn-sm" data-bd="${x.id}" style="color:#c62828">Delete</button></div></td></tr>`).join("") || `<tr><td colspan="8" class="empty-sm">No banners.</td></tr>`}</tbody></table></div></div>
+        <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Order</th><th>Title</th><th>Theme</th><th>Department</th><th>Link</th><th>Status</th><th></th></tr></thead><tbody>
+        ${b.items.map((x) => `<tr><td>${x.sort}</td><td class="pname">${esc(x.title)}<div class="muted">${esc(x.subtitle || "")}</div></td><td><span class="pill">${esc(x.theme)}</span></td><td>${esc(x.department || "All")}</td><td class="muted">${esc(x.link || "")}</td><td>${x.active ? '<span class="pill ok">Live</span>' : '<span class="pill">Off</span>'}</td>
+          <td><div style="display:flex;gap:6px"><button class="btn btn-sm" data-be="${x.id}">Edit</button><button class="btn btn-sm" data-bd="${x.id}" style="color:#c62828">Delete</button></div></td></tr>`).join("") || `<tr><td colspan="7" class="empty-sm">No banners.</td></tr>`}</tbody></table></div></div>
       <div class="card c12"><div class="card-h"><div><h2>Coupons & promotional offers</h2><div class="sub">Product-level discounts are set with MRP vs selling price on each product.</div></div><button class="btn btn-primary btn-sm" id="cadd">+ Add coupon</button></div>
         <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Code</th><th>Offer</th><th class="num">Min order</th><th>Valid</th><th class="num">Used</th><th>Status</th><th></th></tr></thead><tbody>
         ${c.items.map((x) => `<tr><td><b>${esc(x.code)}</b><div class="muted">${esc(x.description || "")}</div></td><td>${x.kind === "pct" ? `${x.value}% off${x.max_discount ? ` (max ${fmt.inr(x.max_discount)})` : ""}` : fmt.inr(x.value) + " off"}</td><td class="num">${fmt.inr(x.min_order)}</td>
@@ -967,37 +995,14 @@
     el.querySelector("#anns").onclick = async () => { try { await api("PUT", "/api/admin/announcement", { announcement: el.querySelector("#ann").value }); toast("Announcement saved"); } catch (e) { toast(e.message, "err"); } };
     const links = [["#/search?offers=1&sort=discount", "Offers page"], ["#/search?sort=newest", "New arrivals"], ["#/search?sort=popular", "Best sellers"], ...meta.categories.map((x) => [`#/c/${x.slug}`, "Category: " + x.name])];
     const bdlg = async (x = { theme: "navy", active: 1, sort: b.items.length }) => {
-      let photoFile = null, removePhoto = false;
-      const ok = await modal({ title: x.id ? "Edit banner" : "Add banner", body: `
-        <div class="fld"><span>Banner photo</span>
-          <div class="ban-photo"><div class="ban-prev" id="bprev">${x.image_url ? `<img src="${esc(x.image_url)}" alt="">` : `<span>No photo yet</span>`}</div>
-            <div class="ban-acts"><label class="btn btn-sm btn-primary">📷 ${x.image_url ? "Change photo" : "Add photo"}<input type="file" id="bfile" accept="image/jpeg,image/png,image/webp,image/gif" hidden></label>
-              <button type="button" class="btn btn-sm" id="brm" ${x.image_url ? "" : "hidden"} style="color:#c62828">Remove photo</button>
-              <small class="muted">JPG, PNG or WEBP, up to 5 MB. Wide photos look best (about 1600 × 600).</small></div></div></div>
-        <label class="fld"><span>Title</span><input id="bt" value="${esc(x.title || "")}" maxlength="80"><small>Leave empty if your photo already has the text on it.</small></label><label class="fld"><span>Subtitle</span><input id="bs" value="${esc(x.subtitle || "")}" maxlength="160"></label>
+      const ok = await modal({ title: x.id ? "Edit banner" : "Add banner", body: `<label class="fld"><span>Title</span><input id="bt" value="${esc(x.title || "")}" maxlength="80"></label><label class="fld"><span>Subtitle</span><input id="bs" value="${esc(x.subtitle || "")}" maxlength="160"></label>
         <div class="row2"><label class="fld"><span>Button text</span><input id="bc" value="${esc(x.cta || "")}"></label><label class="fld"><span>Links to</span><select id="bl">${links.map(([v, l]) => `<option value="${esc(v)}" ${x.link === v ? "selected" : ""}>${esc(l)}</option>`).join("")}</select></label></div>
         <div class="row3"><label class="fld"><span>Theme</span><select id="bth">${["navy", "teal", "coral", "gold", "plum", "slate"].map((t) => `<option ${x.theme === t ? "selected" : ""}>${t}</option>`).join("")}</select></label>
         <label class="fld"><span>Department</span><select id="bd"><option value="">All tabs</option>${meta.departments.map((d) => `<option ${x.department === d ? "selected" : ""}>${esc(d)}</option>`).join("")}</select></label><label class="fld"><span>Order</span><input id="bo" type="number" value="${x.sort}"></label></div>
         <label class="chk"><input type="checkbox" id="ba" ${x.active ? "checked" : ""}> Live</label>`,
-        onOpen: (m) => {
-          const prev = m.querySelector("#bprev"), rm = m.querySelector("#brm");
-          m.querySelector("#bfile").onchange = (e) => {
-            const f = e.target.files[0]; if (!f) return;
-            if (f.size > 5 * 1024 * 1024) { toast("Photo is larger than 5 MB", "err"); e.target.value = ""; return; }
-            photoFile = f; removePhoto = false;
-            prev.innerHTML = `<img src="${URL.createObjectURL(f)}" alt="">`; rm.hidden = false;
-          };
-          rm.onclick = () => { photoFile = null; removePhoto = true; m.querySelector("#bfile").value = ""; prev.innerHTML = "<span>No photo</span>"; rm.hidden = true; };
-        },
-        actions: [{ label: "Cancel", cls: "btn-ghost" }, { label: "Save", cls: "btn-primary", handler: async (m) => {
+        actions: [{ label: "Cancel", cls: "btn-ghost" }, { label: "Save", cls: "btn-primary", handler: (m) => {
           const d = { title: m.querySelector("#bt").value, subtitle: m.querySelector("#bs").value, cta: m.querySelector("#bc").value, link: m.querySelector("#bl").value, theme: m.querySelector("#bth").value, department: m.querySelector("#bd").value, sort: m.querySelector("#bo").value, active: m.querySelector("#ba").checked };
-          const hasPhoto = photoFile || (x.image_url && !removePhoto);
-          if (!d.title.trim() && !hasPhoto) { toast("Add a title or a photo", "err"); return false; }
-          const r = x.id ? await api("PUT", "/api/admin/banners/" + x.id, d) : await api("POST", "/api/admin/banners", d);
-          const id = r.id || x.id;
-          if (photoFile) { const fd = new FormData(); fd.append("file", photoFile); await api("POST", `/api/admin/banners/${id}/image`, fd); }
-          else if (removePhoto && x.image_url) await api("DELETE", `/api/admin/banners/${id}/image`);
-          return true;
+          return x.id ? api("PUT", "/api/admin/banners/" + x.id, d) : api("POST", "/api/admin/banners", d);
         } }] });
       if (ok) { toast("Banner saved"); marketing(el); }
     };
@@ -1057,7 +1062,7 @@
       <div class="card c6"><h2>Payments</h2><div class="sub">Secret keys live in the server's .env file — never here</div>
         ${b("cod_enabled", "Cash on Delivery")}${n("cod_max_amount", "COD maximum order value (₹)")}
         ${b("upi_enabled", "Direct UPI to my UPI ID (you confirm each payment)")}
-        <div class="row2">${t("upi_id", "Your UPI ID", 'placeholder="yourname@okhdfcbank"')}${t("upi_payee_name", "Name shown to payer", 'placeholder="e.g. Unit Non-CSD Store"')}</div>
+        <div class="row2">${t("upi_id", "Your UPI ID", 'placeholder="yourname@okhdfcbank"')}${t("upi_payee_name", "Name shown to payer", 'placeholder="e.g. PVC Paltan Store"')}</div>
         <div class="est-note" style="margin:-4px 0 10px">Customers pay to this UPI ID and enter the transaction ID. Check your bank/UPI app, then press <b>Confirm payment</b> on the order.</div>
         ${b("razorpay_enabled", "Razorpay (UPI, cards, netbanking)")}<div class="est-note" style="margin:-4px 0 10px">${esc(d.integrations.razorpay)}</div>
         ${b("sandbox_enabled", "Sandbox test payments (turn OFF before going live)")}${n("payment_expiry_minutes", "Unpaid online orders auto-cancel after (minutes)", 'min="5" max="1440"')}</div>
