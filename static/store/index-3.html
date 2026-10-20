@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>PVC Paltan Store</title>
+  <meta name="description" content="PVC Paltan Store: browse, order and track deliveries.">
+  <meta name="theme-color" content="#2b3047">
+  <link rel="icon" href="/static/common/logo.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="/static/common/common.css?v=20261024">
+  <link rel="stylesheet" href="/static/store/store.css?v=20261024">
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+  <header class="top" id="top">
+    <div class="top-row">
+      <button class="icon-btn" id="menu-btn" aria-label="Open menu" aria-controls="drawer" aria-expanded="false">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+      </button>
+      <a href="#/" class="brand" aria-label="Home">
+        <img src="/static/common/logo.svg" alt="" width="34" height="34">
+        <span class="brand-txt"><b id="brand-name">PVC Paltan Store</b><small>NON-CSD</small></span>
+      </a>
+      <form class="top-search" id="top-search" role="search">
+        <input type="search" name="q" placeholder="Search products, brands and categories" aria-label="Search products" autocomplete="off">
+        <button aria-label="Search"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg></button>
+      </form>
+      <div class="top-actions">
+        <a href="#/search" class="icon-btn only-mobile" aria-label="Search">
+          <svg width="27" height="27" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
+        </a>
+        <a href="#/wishlist" class="icon-btn only-desktop" aria-label="Wishlist">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 20s-7-4.4-9-9a5 5 0 0 1 9-3 5 5 0 0 1 9 3c-2 4.6-9 9-9 9z"/></svg>
+          <span class="badge" data-count="wishlist" hidden></span>
+        </a>
+        <a href="#/account" class="icon-btn only-desktop" aria-label="Account">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="8" r="4"/><path d="M4 21c1-4 4.5-6 8-6s7 2 8 6"/></svg>
+        </a>
+        <a href="#/cart" class="icon-btn" aria-label="Cart">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M5 8h14l-1.2 11.2a2 2 0 0 1-2 1.8H8.2a2 2 0 0 1-2-1.8z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/></svg>
+          <span class="badge" data-count="cart" hidden></span>
+        </a>
+      </div>
+    </div>
+    <div class="strip" id="strip" hidden></div>
+    <nav class="dept-tabs" id="dept-tabs" aria-label="Departments"></nav>
+  </header>
+
+  <aside class="drawer" id="drawer" aria-hidden="true" aria-label="Menu">
+    <div class="drawer-panel">
+      <div class="drawer-head" id="drawer-head"></div>
+      <nav class="drawer-tabs" id="drawer-tabs"></nav>
+      <div class="drawer-body" id="drawer-body"></div>
+    </div>
+    <div class="drawer-scrim" id="drawer-scrim"></div>
+  </aside>
+
+  <main id="main" tabindex="-1"><div class="page-loading"><span class="spin lg"></span></div></main>
+
+  <footer class="foot" id="foot"></footer>
+
+  <nav class="bottom-nav" aria-label="Primary">
+    <a href="#/" data-nav="home"><svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 11 12 4l9 7"/><path d="M5 10v10h14V10"/><path d="M10 20v-6h4v6"/></svg><span>Home</span></a>
+    <a href="#/wishlist" data-nav="wishlist"><svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 20s-7-4.4-9-9a5 5 0 0 1 9-3 5 5 0 0 1 9 3c-2 4.6-9 9-9 9z"/></svg><span>Wishlist</span><i class="badge" data-count="wishlist" hidden></i></a>
+    <a href="#/categories" data-nav="categories"><svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3.5" y="3.5" width="7" height="7"/><rect x="13.5" y="3.5" width="7" height="7"/><rect x="3.5" y="13.5" width="7" height="7"/><rect x="13.5" y="13.5" width="7" height="7"/></svg><span>Categories</span></a>
+    <a href="#/orders" data-nav="orders"><svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 7h13v10H3z"/><path d="M16 10h3l2 3v4h-5"/><circle cx="7" cy="18" r="1.8"/><circle cx="18" cy="18" r="1.8"/></svg><span>Orders</span></a>
+    <a href="#/account" data-nav="account"><svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="8" r="4"/><path d="M4 21c1-4 4.5-6 8-6s7 2 8 6"/></svg><span>Profile</span><i class="badge" data-count="notifications" hidden></i></a>
+  </nav>
+
+  <script src="/static/common/core.js?v=20261024"></script>
+  <script src="/static/common/i18n.js?v=20261024"></script>
+  <script src="/static/common/qr.js?v=20261024"></script>
+  <script src="/static/store/store.js?v=20261024"></script>
+</body>
+</html>
