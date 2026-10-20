@@ -1,4 +1,4 @@
-/* Unit Non-CSD App — customer storefront (single-page app, hash routing). */
+/* PVC Paltan Store — customer storefront (single-page app, hash routing). */
 (function () {
   const { api, esc, fmt, toast, modal, confirmDialog, promptDialog, formData, debounce, stars } = NC;
   const S = { me: null, counts: { cart: 0, wishlist: 0, notifications: 0 }, meta: null, dept: "", wish: new Set(), heroTimer: null };
@@ -90,7 +90,7 @@
     const u = S.me;
     document.getElementById("drawer-head").innerHTML = `<img src="/static/common/logo.svg" alt="">
       <div><a href="${u ? "#/account" : "#/login"}" class="dh-name">${esc(u ? u.name : "Sign in / Register")} <span aria-hidden="true">›</span></a>
-      <span class="dh-sub">${u ? (u.buyer ? "Buyer code " + esc(u.buyer.code) : u.role === "customer" ? "Unit customer" : esc(u.role)) : "Welcome to the unit store"}</span></div>`;
+      <span class="dh-sub">${u ? (u.buyer ? "Buyer code " + esc(u.buyer.code) : u.role === "customer" ? "Unit customer" : esc(u.role)) : "Welcome to the store"}</span></div>`;
     const depts = S.meta.departments;
     document.getElementById("drawer-tabs").innerHTML = depts.map((d) => `<button data-d="${esc(d)}" class="${d === dept ? "on" : ""}">${esc(d.replace(" & Living", ""))}</button>`).join("");
     document.querySelectorAll("#drawer-tabs button").forEach((b) => (b.onclick = () => renderDrawer(b.dataset.d)));
@@ -798,7 +798,7 @@
     const go = () => { location.hash = next && next.startsWith("#/") ? next : "#/"; };
     const swap = `${reg ? `Already have an account? <a href="#/login${next ? "?next=" + encodeURIComponent(next) : ""}" style="color:var(--teal);font-weight:600">Sign in</a>`
       : `New here? Just enter your email above — we'll create your account.`}`;
-    main.innerHTML = `<div class="auth"><div style="margin-bottom:14px"><label style="display:block;font-size:14px;font-weight:600;color:var(--ink-2);margin-bottom:6px">🌐 Language</label>${NCI18N.selectHtml("lang-sel")}</div><h1>${reg ? "Create your account" : "Sign in"}</h1>
+    main.innerHTML = `<div class="auth"><div style="text-align:center;margin:0 0 14px"><img src="/static/common/gurkha-logo.svg" alt="PVC Paltan Store" style="display:block;margin:0 auto;height:170px;width:auto"></div><div style="margin-bottom:14px"><label style="display:block;font-size:14px;font-weight:600;color:var(--ink-2);margin-bottom:6px">🌐 Language</label>${NCI18N.selectHtml("lang-sel")}</div><h1>${reg ? "Create your account" : "Sign in"}</h1>
       <p class="muted">${reg ? "Register to order, track deliveries and save a wishlist." : "Welcome to " + esc(S.meta.store.store_name)}</p>
       ${gid ? `<div class="g-wrap"><div id="g-btn"></div><div class="issue" id="g-err" role="alert" hidden></div></div>
         <div class="or-line"><span>or use your email</span></div>` : ""}
