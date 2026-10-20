@@ -798,8 +798,8 @@
     const go = () => { location.hash = next && next.startsWith("#/") ? next : "#/"; };
     const swap = `${reg ? `Already have an account? <a href="#/login${next ? "?next=" + encodeURIComponent(next) : ""}" style="color:var(--teal);font-weight:600">Sign in</a>`
       : `New here? Just enter your email above — we'll create your account.`}`;
-    main.innerHTML = `<div class="auth"><div style="text-align:center;margin:0 0 14px"><img src="/static/common/gurkha-logo.svg" alt="PVC Paltan Store" style="display:block;margin:0 auto;height:170px;width:auto"></div><div style="margin-bottom:14px"><label style="display:block;font-size:14px;font-weight:600;color:var(--ink-2);margin-bottom:6px">🌐 Language</label>${NCI18N.selectHtml("lang-sel")}</div><h1>${reg ? "Create your account" : "Sign in"}</h1>
-      <p class="muted">${reg ? "Register to order, track deliveries and save a wishlist." : "Welcome to " + esc(S.meta.store.store_name)}</p>
+    main.innerHTML = `<div class="auth"><div style="text-align:center;margin:0 0 14px"><img src="/static/common/gurkha-logo.svg" alt="PVC Paltan Store" style="display:block;margin:0 auto;height:170px;width:auto"><div style="margin-top:10px;font-size:21px;font-weight:700;color:var(--navy)">Welcome to ${esc(S.meta.store.store_name)}</div></div><div style="margin-bottom:14px"><label style="display:block;font-size:14px;font-weight:600;color:var(--ink-2);margin-bottom:6px">🌐 Language</label>${NCI18N.selectHtml("lang-sel")}</div><h1>${reg ? "Create your account" : "Sign in"}</h1>
+      ${reg ? `<p class="muted">Register to order, track deliveries and save a wishlist.</p>` : ""}
       ${gid ? `<div class="g-wrap"><div id="g-btn"></div><div class="issue" id="g-err" role="alert" hidden></div></div>
         <div class="or-line"><span>or use your email</span></div>` : ""}
       <div id="auth-box"></div>
