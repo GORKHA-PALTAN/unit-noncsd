@@ -106,7 +106,7 @@
           <a class="tile" href="#/c/${s.slug}"><div class="t-img">${c.image ? `<img src="${esc(c.image)}" alt="" loading="lazy">` : `<span style="font-size:40px">${ICON[c.icon] || "🛍️"}</span>`}</div>${esc(s.name)}</a>`).join("")}</div></div>
       <div class="drawer-links">
         <a href="#/orders">📦 My orders</a><a href="#/wishlist">♡ Wishlist</a><a href="#/notifications">🔔 Notifications</a>
-        <a href="#/policy/returns">↩︎ Returns & refunds</a>${u ? `<button id="dr-logout">⎋ Sign out</button>` : `<a href="#/login">→ Sign in</a>`}
+        <button id="dr-lang">🌐 Language</button><a href="#/policy/returns">↩︎ Returns & refunds</a>${u ? `<button id="dr-logout">⎋ Sign out</button>` : `<a href="#/login">→ Sign in</a>`}
         ${u && u.role !== "customer" ? `<a href="/admin">⚙ Admin dashboard</a>` : ""}</div>
       <div class="credit">Created &amp; managed by <b>Surjeet Choudhary</b></div>`;
     document.querySelectorAll(".acc-h").forEach((h) => (h.onclick = () => {
@@ -114,6 +114,7 @@
       h.setAttribute("aria-expanded", !open);
       document.getElementById("acc-" + h.dataset.acc).hidden = open;
     }));
+    document.getElementById("dr-lang").onclick = () => { openDrawer(false); NCI18N.dialog(); };
     const lo = document.getElementById("dr-logout");
     if (lo) lo.onclick = logout;
   }
@@ -247,12 +248,9 @@
     main.innerHTML = `
       <section class="hero" aria-roledescription="carousel" aria-label="Promotions">
         <div class="hero-track" id="hero-track">${banners.map((b, i) => `
-          ${b.photo ? `<a class="hero-slide hero-photo th-${esc(b.theme || "navy")} ${b.title ? "has-text" : ""}" href="${esc(b.link || "#/search")}" role="group" aria-label="${esc(b.title || "Offer")} — ${i + 1} of ${banners.length}">
-            <img class="hero-bg" src="${esc(b.photo)}" alt="">
-            ${b.title ? `<div class="hero-txt"><h2>${esc(b.title)}</h2>${b.subtitle ? `<p>${esc(b.subtitle)}</p>` : ""}${b.cta ? `<span class="btn">${esc(b.cta)}</span>` : ""}</div>` : ""}</a>`
-          : `<div class="hero-slide th-${esc(b.theme || "navy")}" role="group" aria-label="${i + 1} of ${banners.length}">
+          <div class="hero-slide th-${esc(b.theme || "navy")}" role="group" aria-label="${i + 1} of ${banners.length}">
             <div><h2>${esc(b.title)}</h2>${b.subtitle ? `<p>${esc(b.subtitle)}</p>` : ""}${b.cta ? `<a class="btn" href="${esc(b.link || "#/search")}">${esc(b.cta)}</a>` : ""}</div>
-            <div class="hero-art">${b.image_url || heroImgs[i] ? `<img src="${esc(b.image_url || heroImgs[i])}" alt="">` : ""}</div></div>`}`).join("")}</div>
+            <div class="hero-art">${b.image_url || heroImgs[i] ? `<img src="${esc(b.image_url || heroImgs[i])}" alt="">` : ""}</div></div>`).join("")}</div>
         ${banners.length > 1 ? `<div class="dots" id="hero-dots">${banners.map((_, i) => `<button aria-label="Slide ${i + 1}" class="${i ? "" : "on"}"></button>`).join("")}</div>` : ""}
       </section>
       <section class="sec"><div class="sec-h"><h2>Shop by category</h2><a href="#/categories">All categories ›</a></div>
@@ -756,7 +754,7 @@
         <div class="box" style="margin-bottom:14px"><div class="menu-list">
           <a href="#/orders">📦 My orders <span>›</span></a><a href="#/wishlist">♡ Wishlist <span>›</span></a>
           <a href="#/notifications">🔔 Notifications ${S.counts.notifications ? `<span class="pill bad">${S.counts.notifications}</span>` : "<span>›</span>"}</a>
-          <button id="edit-prof">✎ Edit profile <span>›</span></button><button id="chg-pw">🔒 Change password <span>›</span></button>
+          <button id="edit-prof">✎ Edit profile <span>›</span></button><button id="chg-pw">🔒 Change password <span>›</span></button><button id="chg-lang">🌐 Language <span>›</span></button>
           <button id="logout" style="color:#c62828">⎋ Sign out</button></div></div></div>
         <div class="box"><h2>Saved addresses</h2>${addrs.items.map((a) => `<div class="addr"><b>${esc(a.name)}</b> ${a.is_default ? '<span class="pill teal">Default</span>' : ""} ${a.label ? `<span class="pill">${esc(a.label)}</span>` : ""}
           <div>${esc(a.line1)}${a.line2 ? ", " + esc(a.line2) : ""}, ${esc(a.city)}, ${esc(a.state)} ${esc(a.pincode)}</div><div style="color:var(--ink-3)">${esc(a.phone)}</div>
@@ -775,6 +773,7 @@
       if (ok) { await refreshMe(); toast("Profile updated"); pageAccount(); }
     };
     document.getElementById("chg-pw").onclick = () => passwordDialog();
+    document.getElementById("chg-lang").onclick = () => NCI18N.dialog();
   }
 
   function passwordDialog() {
@@ -799,13 +798,14 @@
     const go = () => { location.hash = next && next.startsWith("#/") ? next : "#/"; };
     const swap = `${reg ? `Already have an account? <a href="#/login${next ? "?next=" + encodeURIComponent(next) : ""}" style="color:var(--teal);font-weight:600">Sign in</a>`
       : `New here? Just enter your email above — we'll create your account.`}`;
-    main.innerHTML = `<div class="auth"><h1>${reg ? "Create your account" : "Sign in"}</h1>
+    main.innerHTML = `<div class="auth"><div style="margin-bottom:14px"><label style="display:block;font-size:14px;font-weight:600;color:var(--ink-2);margin-bottom:6px">🌐 Language</label>${NCI18N.selectHtml("lang-sel")}</div><h1>${reg ? "Create your account" : "Sign in"}</h1>
       <p class="muted">${reg ? "Register to order, track deliveries and save a wishlist." : "Welcome to " + esc(S.meta.store.store_name)}</p>
       ${gid ? `<div class="g-wrap"><div id="g-btn"></div><div class="issue" id="g-err" role="alert" hidden></div></div>
         <div class="or-line"><span>or use your email</span></div>` : ""}
       <div id="auth-box"></div>
       <p style="text-align:center;margin-top:16px;font-size:15px">${swap}</p>
       <p style="text-align:center;font-size:13px;color:var(--ink-3)">Staff and owner: <a href="/admin" style="color:var(--teal)">admin sign-in</a></p></div>`;
+    NCI18N.bindSelect(document.getElementById("lang-sel"));
     const box = document.getElementById("auth-box");
     let email = "", resendTimer = null;
 
