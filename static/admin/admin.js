@@ -761,9 +761,9 @@
     const roots = cats.filter((c) => !c.parent_id);
     const edit = can("products");
     el.innerHTML = `<div class="toolbar"><div class="sub" style="color:var(--ink-3)">${roots.length} categories · ${cats.length - roots.length} subcategories</div><span class="grow"></span>${edit ? `<button class="btn btn-primary btn-sm" id="cadd">+ Add category</button>` : ""}</div>
-      <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Name</th><th>Department</th><th class="num">Products</th><th class="num">Default GST</th><th>Visible</th><th></th></tr></thead><tbody>
-      ${roots.map((r) => [r, ...cats.filter((c) => c.parent_id === r.id)].map((c) => `<tr><td style="${c.parent_id ? "padding-left:34px" : "font-weight:700"}">${c.parent_id ? "↳ " : ""}${esc(c.name)}</td><td>${esc(c.department || "")}</td><td class="num">${c.products}</td><td class="num">${c.default_tax_rate}%</td>
-        <td>${c.active ? '<span class="pill ok">Yes</span>' : '<span class="pill">Hidden</span>'}</td><td>${edit ? `<div style="display:flex;gap:6px">${!c.parent_id ? `<button class="btn btn-sm" data-sub="${c.id}">+ Sub</button>` : ""}<button class="btn btn-sm" data-ed="${c.id}">Edit</button><button class="btn btn-sm" data-del="${c.id}" style="color:#c62828">Delete</button></div>` : ""}</td></tr>`).join("")).join("")}
+      <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Photo</th><th>Name</th><th>Department</th><th class="num">Products</th><th class="num">Default GST</th><th>Visible</th><th></th></tr></thead><tbody>
+      ${roots.map((r) => [r, ...cats.filter((c) => c.parent_id === r.id)].map((c) => `<tr><td>${c.image ? `<img src="${esc(c.image)}" alt="" style="width:44px;height:44px;object-fit:cover;border-radius:8px;display:block">` : '<span class="muted" style="font-size:12px">Auto</span>'}</td><td style="${c.parent_id ? "padding-left:34px" : "font-weight:700"}">${c.parent_id ? "↳ " : ""}${esc(c.name)}</td><td>${esc(c.department || "")}</td><td class="num">${c.products}</td><td class="num">${c.default_tax_rate}%</td>
+        <td>${c.active ? '<span class="pill ok">Yes</span>' : '<span class="pill">Hidden</span>'}</td><td>${edit ? `<div style="display:flex;gap:6px">${!c.parent_id ? `<button class="btn btn-sm" data-sub="${c.id}">+ Sub</button>` : ""}<button class="btn btn-sm" data-ph="${c.id}">📷 Photo</button><button class="btn btn-sm" data-ed="${c.id}">Edit</button><button class="btn btn-sm" data-del="${c.id}" style="color:#c62828">Delete</button></div>` : ""}</td></tr>`).join("")).join("")}
       </tbody></table></div>`;
     const dlg = async (c = {}, parent = null) => {
       const ok = await modal({ title: c.id ? "Edit category" : parent ? "Add subcategory" : "Add category",
@@ -778,6 +778,20 @@
         } }] });
       if (ok) { toast("Category saved"); categories(el); }
     };
+    const photoDlg = (c) => modal({ title: "Category photo · " + c.name,
+      body: `<div style="text-align:center;margin-bottom:12px">${c.image ? `<img src="${esc(c.image)}" alt="" style="max-width:100%;max-height:220px;border-radius:12px">` : `<p class="muted" style="margin:0">No photo chosen yet. The store shows the first product's picture.</p>`}</div>
+        <label class="fld"><span>Choose a photo (JPG, PNG or WEBP, up to 5 MB)</span><input type="file" id="cpf" accept="image/*"></label>
+        <p class="muted" style="font-size:13px;margin:6px 0 0">Tip: a square photo looks best on the store.</p>`,
+      actions: [{ label: "Close", cls: "btn-ghost" },
+        ...(c.image ? [{ label: "Remove photo", cls: "", handler: async () => {
+          try { await api("DELETE", `/api/admin/categories/${c.id}/image`); toast("Photo removed"); categories(el); return true; } catch (e) { toast(e.message, "err"); return false; } } }] : []),
+        { label: "Upload", cls: "btn-primary", handler: async (m) => {
+          const f = m.querySelector("#cpf").files[0];
+          if (!f) { toast("Choose a photo first", "err"); return false; }
+          const fd = new FormData(); fd.append("file", f);
+          try { await api("POST", `/api/admin/categories/${c.id}/image`, fd); toast("Photo saved"); categories(el); return true; } catch (e) { toast(e.message, "err"); return false; }
+        } }] });
+    el.querySelectorAll("[data-ph]").forEach((b) => (b.onclick = () => photoDlg(cats.find((c) => c.id == b.dataset.ph))));
     const add = el.querySelector("#cadd"); if (add) add.onclick = () => dlg();
     el.querySelectorAll("[data-sub]").forEach((b) => (b.onclick = () => dlg({}, +b.dataset.sub)));
     el.querySelectorAll("[data-ed]").forEach((b) => (b.onclick = () => dlg(cats.find((c) => c.id == b.dataset.ed))));
