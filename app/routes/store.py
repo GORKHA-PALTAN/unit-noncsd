@@ -19,13 +19,14 @@ def category_tree(db, only_active=True):
     for r in db.all(f"SELECT p.category_id, MIN(i.url) AS url FROM products p JOIN product_images i ON i.product_id=p.id "
                     f"WHERE p.status IN {VISIBLE} GROUP BY p.category_id"):
         imgs[r["category_id"]] = r["url"]
+    own = {r["category_id"]: r["url"] for r in db.all("SELECT category_id, url FROM category_images")}
     roots = []
     by_id = {}
     for r in rows:
         node = {"id": r["id"], "name": r["name"], "slug": r["slug"], "department": r["department"], "icon": r["icon"],
                 "color": r["color"], "parent_id": r["parent_id"], "children": [],
                 "count": counts.get(r["id"], 0) if not r["parent_id"] else sub_counts.get(r["id"], 0),
-                "image": imgs.get(r["id"])}
+                "image": own.get(r["id"]) or imgs.get(r["id"])}
         by_id[r["id"]] = node
     for node in by_id.values():
         if node["parent_id"] and node["parent_id"] in by_id:
@@ -81,7 +82,6 @@ def home(ctx):
         banners = db.all("SELECT * FROM banners WHERE active=1 AND placement='hero' ORDER BY sort, id")
     for b in banners:  # illustrate each banner with a product from the category it links to
         b["image_url"] = b["image_url"] or None
-        b["photo"] = b["image_url"]  # a photo the owner uploaded (shown full width); image_url may fall back to a product picture
         if not b["image_url"] and b["link"] and b["link"].startswith("#/c/"):
             row = db.one(f"SELECT i.url FROM product_images i JOIN products p ON p.id=i.product_id JOIN categories c ON c.id IN (p.category_id, p.subcategory_id) "
                          f"WHERE c.slug=? AND p.status IN {VISIBLE} ORDER BY p.featured DESC, p.units_sold DESC, i.sort LIMIT 1", (b["link"][4:],))
@@ -105,7 +105,7 @@ def home(ctx):
     tree = category_tree(db)
     popular = sorted([c for c in tree if not dept or c["department"] == dept], key=lambda c: -c["count"])
     return {
-        "banners": [{k: b[k] for k in ("id", "title", "subtitle", "cta", "link", "theme", "image_url", "photo")} for b in banners],
+        "banners": [{k: b[k] for k in ("id", "title", "subtitle", "cta", "link", "theme", "image_url")} for b in banners],
         "featured": section("p.featured DESC, p.rating_avg DESC", 10, "AND p.featured=1"),
         "best_sellers": section("p.units_sold DESC", 10),
         "new_arrivals": section("p.created_at DESC", 10),

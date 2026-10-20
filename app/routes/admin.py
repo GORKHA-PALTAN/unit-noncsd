@@ -43,7 +43,8 @@ def overview(ctx):
 @api("GET", "/api/admin/categories", auth="admin")
 def categories(ctx):
     db = get_db()
-    rows = db.all("SELECT c.*, (SELECT COUNT(*) FROM products p WHERE p.category_id=c.id OR p.subcategory_id=c.id) AS products "
+    rows = db.all("SELECT c.*, (SELECT COUNT(*) FROM products p WHERE p.category_id=c.id OR p.subcategory_id=c.id) AS products, "
+                  "(SELECT url FROM category_images ci WHERE ci.category_id=c.id) AS image "
                   "FROM categories c ORDER BY COALESCE(c.parent_id, c.id), c.parent_id IS NOT NULL, c.sort, c.name")
     return {"items": rows}
 
@@ -91,6 +92,48 @@ def edit_category(ctx):
     return db.one("SELECT * FROM categories WHERE id=?", (cid,))
 
 
+@api("POST", "/api/admin/categories/{cid:int}/image", auth="admin", perm="products", multipart=True)
+def category_image_set(ctx):
+    db = get_db()
+    cid = ctx.params["cid"]
+    crow = db.one("SELECT id, name FROM categories WHERE id=?", (cid,))
+    if not crow:
+        raise ApiError(404, "Category not found.")
+    f = ctx.form.get("file") if ctx.form else None
+    if f is None or not hasattr(f, "file"):
+        raise ApiError(400, "Choose a photo first.")
+    f.file.seek(0)
+    data = f.file.read(config.MAX_UPLOAD_BYTES + 1)
+    if len(data) > config.MAX_UPLOAD_BYTES:
+        raise ApiError(400, "Photo is larger than 5 MB.")
+    ext = _sniff(data)
+    if not ext:
+        raise ApiError(400, "Only JPG, PNG, WEBP or GIF photos are allowed.")
+    name = f"{cid}_{secrets.token_hex(8)}.{ext}"
+    save_file(f"categories/{name}", {"jpg": "image/jpeg", "png": "image/png", "gif": "image/gif", "webp": "image/webp"}[ext], data)
+    url = f"/uploads/categories/{name}"
+    old = db.one("SELECT url FROM category_images WHERE category_id=?", (cid,))
+    if old:
+        db.run("UPDATE category_images SET url=?, updated_at=? WHERE category_id=?", (url, now_iso(), cid))
+        delete_file(old["url"].replace("/uploads/", "", 1))
+    else:
+        db.run("INSERT INTO category_images(category_id, url, updated_at) VALUES (?, ?, ?)", (cid, url, now_iso()))
+    audit(ctx.uid, "category_photo", "category", cid, crow["name"], ctx.ip)
+    return {"ok": True, "image": url}
+
+
+@api("DELETE", "/api/admin/categories/{cid:int}/image", auth="admin", perm="products")
+def category_image_remove(ctx):
+    db = get_db()
+    cid = ctx.params["cid"]
+    old = db.one("SELECT url FROM category_images WHERE category_id=?", (cid,))
+    if old:
+        db.run("DELETE FROM category_images WHERE category_id=?", (cid,))
+        delete_file(old["url"].replace("/uploads/", "", 1))
+        audit(ctx.uid, "category_photo_remove", "category", cid, "", ctx.ip)
+    return {"ok": True}
+
+
 @api("DELETE", "/api/admin/categories/{cid:int}", auth="admin", perm="products")
 def delete_category(ctx):
     db = get_db()
@@ -99,6 +142,10 @@ def delete_category(ctx):
         raise ApiError(400, "Move or delete the products in this category first.")
     if db.one("SELECT id FROM categories WHERE parent_id=?", (cid,)):
         raise ApiError(400, "Delete its subcategories first.")
+    old = db.one("SELECT url FROM category_images WHERE category_id=?", (cid,))
+    if old:
+        db.run("DELETE FROM category_images WHERE category_id=?", (cid,))
+        delete_file(old["url"].replace("/uploads/", "", 1))
     db.run("DELETE FROM categories WHERE id=?", (cid,))
     audit(ctx.uid, "category_delete", "category", cid, None, ctx.ip)
     return {"ok": True}
