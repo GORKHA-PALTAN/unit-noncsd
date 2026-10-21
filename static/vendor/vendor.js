@@ -60,7 +60,7 @@
     if (!body) return;
     document.querySelectorAll("#vtabs a").forEach((a) => a.classList.toggle("on", a.dataset.t === t));
     body.innerHTML = `<div class="page-loading"><span class="spin lg"></span></div>`;
-    try { await ({ overview, orders: () => orders(body, "to_ship"), products, earnings, returns: () => orders(body, "returns", true), shop, reports })[t](body); }
+    try { await ({ overview, orders: () => orders(body, "to_ship"), products, earnings, returns: async () => { await orders(body, "returns", true); await itemReturns(body); }, shop, reports })[t](body); }
     catch (e) { if (e.status === 401) { location.reload(); return; } body.innerHTML = `<div class="empty"><h3>Couldn't load this page</h3><p>${esc(e.message)}</p></div>`; }
   }
 
@@ -82,6 +82,19 @@
     NCCharts.hbars(el.querySelector("#vtop"), d.top.map((x) => ({ label: x.name, sub: `${x.units} sold`, value: x.revenue })), { fmt: (v) => fmt.inr(v) });
   }
 
+  async function itemReturns(el) {
+    const d = await api("GET", "/api/vendor/item-returns");
+    const box = document.createElement("div");
+    box.innerHTML = `<h2 class="vh" style="margin-top:22px">Items customers want to return</h2><p class="muted">You decide these: approve or reject, and mark the item received when it comes back (it returns to your stock). The store owner then sends the refund to the customer. When a refund is made, the sale amount (minus commission) for those items is taken off your earnings.</p>
+      ${d.items.length ? `<div class="vgrid">${d.items.map((r) => `<div class="vorder"><div class="vo-h"><b>${esc(r.order_no)}</b><span class="muted">${fmt.datetime(r.created_at)}</span><span class="pill info">${esc(r.label)}</span></div><div class="vo-items"><b>${esc(r.name)}</b> × ${r.qty}</div><div class="muted">Reason: ${esc(r.reason || "")}</div><div class="vo-f"><span>Refund: <b>${fmt.inr(r.amount)}</b></span><span class="grow"></span>${r.status === "requested" ? `<button class="btn btn-primary btn-sm" data-ia="${r.id}">Approve</button><button class="btn btn-sm" data-ir="${r.id}">Reject</button>` : r.status === "approved" ? `<button class="btn btn-primary btn-sm" data-ic="${r.id}">Item received</button>` : ""}</div></div>`).join("")}</div>` : `<div class="empty"><h3>No item returns</h3></div>`}`;
+    el.appendChild(box);
+    const act = async (id, what, body, msg) => { try { await api("POST", `/api/vendor/item-returns/${id}/${what}`, body); toast(msg); orders(el, "returns", true).then(() => itemReturns(el)); return true; } catch (e) { toast(e.message, "err"); return false; } };
+    box.querySelectorAll("[data-ia]").forEach((b) => (b.onclick = () => act(b.dataset.ia, "decide", { action: "approve" }, "Approved — the customer is told")));
+    box.querySelectorAll("[data-ir]").forEach((b) => (b.onclick = () => modal({ title: "Reject return", body: `<label class="fld"><span>Reason (shown to the customer)</span><input id="rn" maxlength="300"></label>`,
+      actions: [{ label: "Cancel", cls: "btn-ghost" }, { label: "Reject", cls: "btn-primary", handler: (m) => act(b.dataset.ir, "decide", { action: "reject", note: m.querySelector("#rn").value }, "Rejected") }] })));
+    box.querySelectorAll("[data-ic]").forEach((b) => (b.onclick = () => modal({ title: "Item received", body: `<p>Is the item fine to sell again?</p><label class="fld"><span>Put it back in your stock?</span><select id="rs"><option value="1">Yes — add back to my stock</option><option value="0">No — damaged</option></select></label><small class="muted">The store owner is told to send the refund to the customer.</small>`,
+      actions: [{ label: "Cancel", cls: "btn-ghost" }, { label: "Confirm", cls: "btn-primary", handler: (m) => act(b.dataset.ic, "receive", { restock: m.querySelector("#rs").value === "1" }, "Marked received") }] })));
+  }
   const FILTERS = [["to_ship", "To pack / ship"], ["shipped", "Shipped"], ["delivered", "Delivered"], ["waiting", "Waiting for payment"], ["returns", "Returns & cancellations"]];
 
   async function orders(el, filter, locked = false) {
@@ -104,7 +117,7 @@
     const S = d.summary;
     el.innerHTML = `<h2 class="vh">Your earnings</h2>
       <div class="vstats">${stat("Ready to be paid", fmt.inr(S.due_now), "Paid to you by the store", S.due_now > 0 ? "ok" : "")}${stat("Clearing", fmt.inr(S.clearing), `Return period (${S.window_days} days)`)}${stat("On hold", fmt.inr(S.hold), "A customer asked to return")}${stat("Already paid", fmt.inr(S.paid))}</div>
-      <div class="vhelp">💡 <b>How it works:</b> when an order is delivered, you earn the sale amount minus the store's commission. The money becomes “Ready to be paid” after the ${S.window_days}-day return period. If an order is returned, it is taken off. ${S.clawback ? `<br><b>${fmt.inr(S.clawback)}</b> will be taken off your next payment because of returns after you were paid.` : ""}</div>
+      <div class="vhelp">💡 <b>How it works:</b> when an order is delivered, you earn the sale amount minus the store's commission. The money becomes “Ready to be paid” after the ${S.window_days}-day return period. If an order is returned, it is taken off. ${S.clawback ? `<br><b>${fmt.inr(S.clawback)}</b> will be taken off your next payment because of returns after you were paid.` : ""}${S.returns_pending ? `<br><b>${fmt.inr(S.returns_pending)}</b> will be taken off your next payment because customers returned some items after you were paid.` : ""}${(d.adjustments || []).length ? `<br>Returned items so far: ${d.adjustments.map((a) => esc(a.name) + " (" + esc(a.order_no) + ", −" + fmt.inr(a.net) + ")").join("; ")}.` : ""}</div>
       <div class="vcardbox"><h3>Payments you received</h3>${d.payouts.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Date</th><th class="num">Amount</th><th>How</th><th>Reference</th></tr></thead><tbody>${d.payouts.map((p) => `<tr><td>${fmt.date(p.created_at)}</td><td class="num"><b>${fmt.inr(p.amount)}</b></td><td>${esc((p.method || "").toUpperCase())}</td><td class="muted">${esc(p.reference || "")}</td></tr>`).join("")}</tbody></table></div>` : '<p class="muted">No payment yet.</p>'}</div>
       <div class="vcardbox"><h3>Every sale</h3>${d.rows.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Order</th><th>Product</th><th class="num">Sale</th><th class="num">Commission</th><th class="num">You earn</th><th>Status</th></tr></thead><tbody>${d.rows.map((r) => `<tr><td>${esc(r.order_no)}</td><td>${esc(r.name)} × ${r.qty}</td><td class="num">${fmt.inr(r.gross)}</td><td class="num">${fmt.inr(r.commission)} <span class="muted">(${r.commission_pct}%)</span></td><td class="num"><b>${fmt.inr(r.net)}</b></td><td><span class="pill ${r.state === "payable" || r.label === "Paid" ? "ok" : r.state === "reversed" ? "bad" : "warn"}">${esc(r.label)}</span></td></tr>`).join("")}</tbody></table></div>` : '<p class="muted">Earnings appear here after your first delivered order.</p>'}</div>`;
   }
