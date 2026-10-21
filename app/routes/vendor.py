@@ -13,9 +13,10 @@ from ..db import get_db, jload, local_date, local_day_start_utc, local_today, no
 from ..security import audit, destroy_user_sessions, hash_password, password_problem
 from ..services import inventory
 from ..services import orders as osvc
-from ..services.common import first_images, get_settings, money, notify, unique_slug
+from .. import config
+from ..services.common import vendor_map, delete_file, first_images, get_settings, money, notify, product_card, save_file, unique_slug
 from ..web import ApiError, api, num, text
-from .admin import _product_fields, _product_out, upload_images
+from .admin import _product_fields, _product_out, _sniff, upload_images
 from .auth import EMAIL_RE
 
 CONTENT_FIELDS = ("name", "description", "category_id")
@@ -75,6 +76,7 @@ def vendor_create(ctx):
         d.update({"user_id": uid, "created_at": now_iso()})
         vid = db.insert("vendors", d)
         audit(ctx.uid, "vendor_create", "vendor", vid, d["business_name"], ctx.ip)
+    vendor_map(force=True)
     return {"ok": True, "id": vid}
 
 
@@ -104,6 +106,7 @@ def vendor_update(ctx):
     if st == "suspended" or ctx.get("password"):
         destroy_user_sessions(v["user_id"])
     audit(ctx.uid, "vendor_update", "vendor", v["id"], f"{d['business_name']} ({st})", ctx.ip)
+    vendor_map(force=True)
     return {"ok": True}
 
 
@@ -151,6 +154,7 @@ def vendor_product_review(ctx):
         db.run("UPDATE products SET status='draft', updated_at=? WHERE id=?", (now_iso(), pid))
         db.run("UPDATE product_vendors SET approval='rejected', note=?, updated_at=? WHERE product_id=?", (note or "Not approved", now_iso(), pid))
     audit(ctx.uid, "vendor_product_" + decision, "product", pid, note, ctx.ip)
+    vendor_map(force=True)
     return {"ok": True}
 
 
@@ -557,3 +561,65 @@ def vendor_report(ctx):
             w.writerow([str(local_date(r["created_at"])), r["order_no"], r["name"], r["qty"], r["unit_price"], r["line_total"], osvc.STATUS_LABEL.get(r["status"], r["status"])])
     return Response("﻿" + buf.getvalue(), media_type="text/csv; charset=utf-8",
                     headers={"Content-Disposition": f'attachment; filename="{kind}-{start}-to-{end}.csv"'})
+
+
+# ================================================================ public shop page + vendor shop settings
+@api("GET", "/api/shops/{vid:int}")
+def shop_public(ctx):
+    db = get_db()
+    v = db.one("SELECT v.id, v.business_name, u.status FROM vendors v JOIN users u ON u.id=v.user_id WHERE v.id=?", (ctx.params["vid"],))
+    if not v or v["status"] != "active":
+        raise ApiError(404, "This shop is not available.")
+    prof = db.one("SELECT about, logo_url FROM vendor_profiles WHERE vendor_id=?", (v["id"],)) or {}
+    rows = db.all("SELECT p.* FROM product_vendors pv JOIN products p ON p.id=pv.product_id WHERE pv.vendor_id=? AND pv.approval='approved' "
+                  "AND p.status IN ('active','out_of_stock') ORDER BY p.units_sold DESC, p.id DESC LIMIT 200", (v["id"],))
+    imgs = first_images([r["id"] for r in rows])
+    return {"id": v["id"], "name": v["business_name"], "about": prof.get("about"), "logo": prof.get("logo_url"),
+            "items": [product_card(r, imgs.get(r["id"])) for r in rows]}
+
+
+@api("GET", "/api/vendor/shop", auth="vendor")
+def vendor_shop_get(ctx):
+    v = _me(ctx)
+    prof = get_db().one("SELECT about, logo_url FROM vendor_profiles WHERE vendor_id=?", (v["id"],)) or {}
+    return {"id": v["id"], "name": v["business_name"], "about": prof.get("about") or "", "logo": prof.get("logo_url")}
+
+
+def _save_profile(db, vid, **fields):
+    if db.one("SELECT 1 FROM vendor_profiles WHERE vendor_id=?", (vid,)):
+        for k, val in fields.items():
+            db.run(f"UPDATE vendor_profiles SET {k}=?, updated_at=? WHERE vendor_id=?", (val, now_iso(), vid))
+    else:
+        db.run("INSERT INTO vendor_profiles(vendor_id, about, logo_url, updated_at) VALUES (?,?,?,?)", (vid, fields.get("about"), fields.get("logo_url"), now_iso()))
+
+
+@api("PUT", "/api/vendor/shop", auth="vendor")
+def vendor_shop_save(ctx):
+    db = get_db()
+    v = _me(ctx)
+    _save_profile(db, v["id"], about=text(ctx.get("about"), "About your shop", required=False, max_len=600) or "")
+    return {"ok": True}
+
+
+@api("POST", "/api/vendor/shop/logo", auth="vendor", multipart=True)
+def vendor_shop_logo(ctx):
+    db = get_db()
+    v = _me(ctx)
+    f = ctx.form.get("file") if ctx.form else None
+    if f is None or not hasattr(f, "file"):
+        raise ApiError(400, "Choose a picture first.")
+    f.file.seek(0)
+    data = f.file.read(config.MAX_UPLOAD_BYTES + 1)
+    if len(data) > config.MAX_UPLOAD_BYTES:
+        raise ApiError(400, "Picture is larger than 5 MB.")
+    ext = _sniff(data)
+    if not ext:
+        raise ApiError(400, "Only JPG, PNG, WEBP or GIF pictures are allowed.")
+    import secrets
+    name = f"{v['id']}_{secrets.token_hex(8)}.{ext}"
+    save_file(f"vendors/{name}", {"jpg": "image/jpeg", "png": "image/png", "gif": "image/gif", "webp": "image/webp"}[ext], data)
+    old = db.one("SELECT logo_url FROM vendor_profiles WHERE vendor_id=?", (v["id"],))
+    _save_profile(db, v["id"], logo_url=f"/uploads/vendors/{name}")
+    if old and old["logo_url"]:
+        delete_file(old["logo_url"].replace("/uploads/", "", 1))
+    return {"ok": True, "logo": f"/uploads/vendors/{name}"}

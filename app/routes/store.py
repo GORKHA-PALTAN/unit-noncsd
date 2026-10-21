@@ -4,7 +4,7 @@ from ..db import get_db, jload, local_today, now_iso, transaction
 from ..web import ApiError, api, num, page_args, text
 from ..services import orders as osvc
 from ..services import payments as psvc
-from ..services.common import (available, bump_activity, discount_pct, first_images, get_settings, log_search, money,
+from ..services.common import (vendor_map, available, bump_activity, discount_pct, first_images, get_settings, log_search, money,
                                product_card, stock_label)
 
 VISIBLE = "('active','out_of_stock')"
@@ -110,6 +110,7 @@ def home(ctx):
     tree = category_tree(db)
     popular = sorted([c for c in tree if not dept or c["department"] == dept], key=lambda c: -c["count"])
     return {
+        "vendors": _home_vendors(db),
         "banners": [{k: b[k] for k in ("id", "title", "subtitle", "cta", "link", "theme", "image_url", "video_url", "audio_url")} for b in banners],
         "featured": section("p.featured DESC, p.rating_avg DESC", 10, "AND p.featured=1"),
         "best_sellers": section("p.units_sold DESC", 10),
@@ -195,6 +196,22 @@ def list_products(ctx):
                        "subcategories": subcats}}
 
 
+def _home_vendors(db):
+    rows = db.all("SELECT v.id, v.business_name AS name, vp.logo_url AS logo, COUNT(p.id) AS n FROM vendors v JOIN users u ON u.id=v.user_id "
+                  "JOIN product_vendors pv ON pv.vendor_id=v.id AND pv.approval='approved' JOIN products p ON p.id=pv.product_id AND p.status IN ('active','out_of_stock') "
+                  "LEFT JOIN vendor_profiles vp ON vp.vendor_id=v.id WHERE u.status='active' GROUP BY v.id, v.business_name, vp.logo_url ORDER BY n DESC, v.id LIMIT 12")
+    return [{"id": r["id"], "name": r["name"], "logo": r["logo"], "products": r["n"]} for r in rows]
+
+
+def _vendor_card(db, vm):
+    if not vm:
+        return None
+    prof = db.one("SELECT about, logo_url FROM vendor_profiles WHERE vendor_id=?", (vm[0],)) or {}
+    n = db.val("SELECT COUNT(*) FROM product_vendors pv JOIN products p ON p.id=pv.product_id WHERE pv.vendor_id=? AND pv.approval='approved' "
+               "AND p.status IN ('active','out_of_stock')", (vm[0],))
+    return {"id": vm[0], "name": vm[1], "about": prof.get("about"), "logo": prof.get("logo_url"), "products": n}
+
+
 @api("GET", "/api/products/{slug}")
 def product_detail(ctx):
     db = get_db()
@@ -236,6 +253,8 @@ def product_detail(ctx):
         "related": [product_card(r, rimgs.get(r["id"])) for r in related],
         "can_review": can_review, "in_wishlist": in_wishlist, "in_cart": in_cart,
         "return_window_days": s["return_window_days"],
+        "sold_by_id": (vendor_map().get(p["id"]) or (None,))[0],
+        "vendor": _vendor_card(db, vendor_map().get(p["id"])),
         "sold_by": (db.one("SELECT v.business_name AS n FROM product_vendors pv JOIN vendors v ON v.id=pv.vendor_id WHERE pv.product_id=?", (p["id"],)) or {}).get("n")
                    or s.get("store_name") or "PVC Paltan Store",
     }
