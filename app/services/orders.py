@@ -478,6 +478,10 @@ def serialize_order(db, order, admin=False):
         vr = vmap.get(it.get("product_id"))
         it["vendor"] = vr["business_name"] if vr else None
         it["vendor_id"] = vr["vendor_id"] if vr else None
+    out["shipments"] = []
+    for f in db.all("SELECT f.vendor_id, v.business_name AS vendor, f.status, f.courier, f.tracking_no FROM vendor_fulfillment f JOIN vendors v ON v.id=f.vendor_id WHERE f.order_id=?", (order["id"],)):
+        out["shipments"].append({"vendor": f["vendor"], "vendor_id": f["vendor_id"], "status": f["status"], "courier": f["courier"], "tracking_no": f["tracking_no"],
+                                 "items": [f"{i['name']} × {i['qty']}" for i in out["items"] if i.get("vendor_id") == f["vendor_id"]]})
     if admin:
         out["vendor_parts"] = db.all("SELECT v.business_name AS vendor, f.status, f.courier, f.tracking_no FROM vendor_fulfillment f JOIN vendors v ON v.id=f.vendor_id WHERE f.order_id=?", (order["id"],))
     out["timeline"] = events
