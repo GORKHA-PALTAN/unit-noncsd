@@ -112,9 +112,25 @@ def first_images(product_ids):
     return out
 
 
+_VM = {"at": 0.0, "map": {}}
+
+
+def vendor_map(force=False):
+    """{product_id: (vendor_id, business_name)} for live vendor products; cached for a few seconds."""
+    import time
+    if force or time.time() - _VM["at"] > 20:
+        rows = get_db().all("SELECT pv.product_id, v.id AS vid, v.business_name FROM product_vendors pv JOIN vendors v ON v.id=pv.vendor_id "
+                            "JOIN users u ON u.id=v.user_id WHERE pv.approval='approved' AND u.status='active'")
+        _VM["map"] = {r["product_id"]: (r["vid"], r["business_name"]) for r in rows}
+        _VM["at"] = time.time()
+    return _VM["map"]
+
+
 def product_card(p, img=None):
     a = available(p)
+    vm = vendor_map().get(p["id"])
     return {
+        "vendor_id": vm[0] if vm else None, "vendor": vm[1] if vm else None,
         "id": p["id"], "name": p["name"], "slug": p["slug"], "brand": p["brand"],
         "price": money(p["selling_price"]), "mrp": money(p["mrp"]) if p.get("mrp") else None,
         "discount": discount_pct(p), "rating": round(p["rating_avg"] or 0, 1), "reviews": p["rating_count"],
