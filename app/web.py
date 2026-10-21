@@ -98,6 +98,8 @@ def api(method, path, auth=None, perm=None, limit=None, multipart=False):
                 return JSONResponse({"error": "This action is available to customer accounts only."}, status_code=403)
             if auth == "admin" and user["role"] not in ("owner", "staff"):
                 return JSONResponse({"error": "Admin access required."}, status_code=403)
+            if auth == "vendor" and user["role"] != "vendor":
+                return JSONResponse({"error": "Vendor access required."}, status_code=403)
             if auth == "owner" and user["role"] != "owner":
                 return JSONResponse({"error": "Only the owner can do this."}, status_code=403)
             if perm and not has_perm(user, perm):

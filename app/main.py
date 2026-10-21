@@ -17,7 +17,7 @@ from .schema import create_schema
 from .web import ROUTES, ApiError
 
 # importing registers the routes
-from .routes import auth, store, admin  # noqa: F401,E402
+from .routes import auth, store, admin, vendor  # noqa: F401,E402
 
 
 CSP = ("default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com/gsi/style; "
@@ -59,6 +59,10 @@ def admin_page(request):
     return FileResponse(config.STATIC_DIR / "admin" / "index.html", headers={"Cache-Control": "no-cache"})
 
 
+def vendor_page(request):
+    return FileResponse(config.STATIC_DIR / "vendor" / "index.html", headers={"Cache-Control": "no-cache"})
+
+
 async def health(request):
     return JSONResponse({"ok": True, "app": config.APP_NAME})
 
@@ -73,7 +77,7 @@ async def razorpay_webhook(request: Request):
         return JSONResponse({"error": e.message}, status_code=e.status)
 
 
-UPLOAD_TYPES = {".jpg": "image/jpeg", ".png": "image/png", ".gif": "image/gif", ".webp": "image/webp", ".svg": "image/svg+xml", ".mp4": "video/mp4", ".webm": "video/webm"}
+UPLOAD_TYPES = {".jpg": "image/jpeg", ".png": "image/png", ".gif": "image/gif", ".webp": "image/webp", ".svg": "image/svg+xml", ".mp4": "video/mp4", ".mp3": "audio/mpeg", ".m4a": "audio/mp4", ".ogg": "audio/ogg", ".wav": "audio/wav", ".webm": "video/webm"}
 
 
 async def uploads(request):
@@ -169,6 +173,8 @@ routes = [
     Route("/", store_page),
     Route("/admin", admin_page),
     Route("/admin/", admin_page),
+    Route("/vendor", vendor_page),
+    Route("/vendor/", vendor_page),
     Route("/health", health),
     Route("/api/payments/razorpay/webhook", razorpay_webhook, methods=["POST"]),
     *ROUTES,

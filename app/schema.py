@@ -52,6 +52,39 @@ CREATE TABLE IF NOT EXISTS banner_videos (
   banner_id INTEGER PRIMARY KEY, url TEXT NOT NULL, updated_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS vendors (
+  id {PK}, user_id INTEGER UNIQUE NOT NULL REFERENCES users(id), business_name TEXT NOT NULL, contact_name TEXT NOT NULL,
+  phone TEXT, address TEXT, gst_no TEXT, bank_holder TEXT, bank_account TEXT, bank_ifsc TEXT, upi TEXT,
+  commission_pct {REAL} NOT NULL DEFAULT 10, created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS product_vendors (
+  product_id INTEGER PRIMARY KEY REFERENCES products(id) ON DELETE CASCADE, vendor_id INTEGER NOT NULL REFERENCES vendors(id),
+  approval TEXT NOT NULL DEFAULT 'pending', note TEXT, updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_pv_vendor ON product_vendors(vendor_id);
+
+CREATE TABLE IF NOT EXISTS vendor_fulfillment (
+  order_id INTEGER NOT NULL, vendor_id INTEGER NOT NULL, status TEXT NOT NULL DEFAULT 'new',
+  courier TEXT, tracking_no TEXT, updated_at TEXT NOT NULL, PRIMARY KEY (order_id, vendor_id)
+);
+
+CREATE TABLE IF NOT EXISTS vendor_payouts (
+  id {PK}, vendor_id INTEGER NOT NULL, amount {REAL} NOT NULL, method TEXT, reference TEXT, note TEXT,
+  created_by INTEGER, created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS vendor_earnings (
+  order_item_id INTEGER PRIMARY KEY, order_id INTEGER NOT NULL, vendor_id INTEGER NOT NULL,
+  gross {REAL} NOT NULL, commission_pct {REAL} NOT NULL, commission {REAL} NOT NULL, net {REAL} NOT NULL,
+  payout_id INTEGER, claw_payout_id INTEGER, created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_ve_vendor ON vendor_earnings(vendor_id);
+
+CREATE TABLE IF NOT EXISTS banner_audios (
+  banner_id INTEGER PRIMARY KEY, url TEXT NOT NULL, updated_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS products (
   id {PK}, name TEXT NOT NULL, slug TEXT UNIQUE NOT NULL, description TEXT,
   category_id INTEGER REFERENCES categories(id), subcategory_id INTEGER REFERENCES categories(id),
