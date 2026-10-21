@@ -395,6 +395,289 @@ class Acceptance(unittest.TestCase):
         hits = [security.rate_limited("login", "1.2.3.4") for _ in range(int(10 * security.config.RATE_LIMIT_SCALE) + 1)]
         self.assertTrue(hits[-1] > 0)
 
+    def test_17_banner_photo_upload(self):
+        import base64
+        png = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==")
+        r = self.owner.post("/api/admin/banners", {"title": "Photo test", "subtitle": "", "cta": "Go", "link": "#/", "theme": "navy", "department": "", "sort": 99, "active": True}, expect=200).json()
+        items = self.owner.get("/api/admin/banners").json()["items"]
+        bid = [b for b in items if b["title"] == "Photo test"][0]["id"]
+        up = self.owner.call("POST", f"/api/admin/banners/{bid}/image", files={"file": ("a.png", png, "image/png")}, expect=200).json()
+        self.assertTrue(up["image"].startswith("/uploads/banners/"))
+        self.assertEqual(self.owner.get(up["image"]).status_code, 200)
+        self.owner.call("POST", f"/api/admin/banners/{bid}/image", files={"file": ("a.txt", b"hello", "text/plain")}, expect=400)
+        home = self.owner.get("/api/home").json()
+        self.assertIn(up["image"], [b["image_url"] for b in home["banners"]])
+        self.owner.call("DELETE", f"/api/admin/banners/{bid}/image", expect=200)
+        items = self.owner.get("/api/admin/banners").json()["items"]
+        self.assertFalse([b for b in items if b["id"] == bid][0]["image_url"])
+        self.owner.call("DELETE", f"/api/admin/banners/{bid}", expect=200)
+
+    def test_18_banner_video_upload(self):
+        self.owner.post("/api/admin/banners", {"title": "Video test", "subtitle": "", "cta": "Go", "link": "#/", "theme": "navy", "department": "", "sort": 98, "active": True}, expect=200)
+        bid = [b for b in self.owner.get("/api/admin/banners").json()["items"] if b["title"] == "Video test"][0]["id"]
+        mp4 = b"\x00\x00\x00\x18ftypmp42\x00\x00\x00\x00mp42isom" + b"\x00" * 5000
+        up = self.owner.call("POST", f"/api/admin/banners/{bid}/video", files={"file": ("v.mp4", mp4, "video/mp4")}, expect=200).json()
+        self.assertTrue(up["video"].endswith(".mp4"))
+        r = self.owner.s.get(BASE + up["video"], headers={"Range": "bytes=0-99"})
+        self.assertIn(r.status_code, (200, 206))
+        self.assertEqual(r.headers["content-type"], "video/mp4")
+        self.owner.call("POST", f"/api/admin/banners/{bid}/video", files={"file": ("v.exe", b"MZ" + b"\x00" * 100, "video/mp4")}, expect=400)
+        home = self.owner.get("/api/home").json()
+        self.assertIn(up["video"], [b["video_url"] for b in home["banners"]])
+        self.owner.call("DELETE", f"/api/admin/banners/{bid}/video", expect=200)
+        self.owner.call("DELETE", f"/api/admin/banners/{bid}", expect=200)
+
+    def test_19_banner_audio_upload(self):
+        self.owner.post("/api/admin/banners", {"title": "Audio test", "subtitle": "", "cta": "Go", "link": "#/", "theme": "navy", "department": "", "sort": 97, "active": True}, expect=200)
+        bid = [b for b in self.owner.get("/api/admin/banners").json()["items"] if b["title"] == "Audio test"][0]["id"]
+        mp3 = b"ID3\x03\x00\x00\x00\x00\x00\x00" + b"\xff\xfb\x90\x00" + b"\x00" * 2000
+        up = self.owner.call("POST", f"/api/admin/banners/{bid}/audio", files={"file": ("a.mp3", mp3, "audio/mpeg")}, expect=200).json()
+        r = self.owner.s.get(BASE + up["audio"], headers={"Range": "bytes=0-99"})
+        self.assertIn(r.status_code, (200, 206))
+        self.owner.call("POST", f"/api/admin/banners/{bid}/audio", files={"file": ("a.exe", b"MZ" + b"\x00" * 100, "audio/mpeg")}, expect=400)
+        home = self.owner.get("/api/home").json()
+        self.assertIn(up["audio"], [b["audio_url"] for b in home["banners"]])
+        self.owner.call("DELETE", f"/api/admin/banners/{bid}/audio", expect=200)
+        self.owner.call("DELETE", f"/api/admin/banners/{bid}", expect=200)
+
+    def test_20_vendor_flow(self):
+        import base64, secrets as _s
+        png = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==")
+        em = f"v{_s.token_hex(3)}@example.com"
+        cat = self.owner.get("/api/meta").json()["categories"][0]["id"]
+        mine = self.new_product(stock=5)
+        self.owner.post("/api/admin/vendors", {"business_name": "Test Traders", "contact_name": "Ravi", "email": em, "password": "Vendor@12345", "commission_pct": 10}, expect=200)
+        vid = [v for v in self.owner.get("/api/admin/vendors").json()["items"] if v["email"] == em][0]["id"]
+        v = Client(); v.login(em, "Vendor@12345")
+        # vendor cannot reach owner or customer areas
+        v.get("/api/admin/products", expect=403); v.get("/api/admin/vendors", expect=403)
+        pid = v.post("/api/vendor/products", {"name": "Vendor Widget", "category_id": cat, "selling_price": 250, "mrp": 300, "stock": 7, "status": "active", "featured": True, "cost_price": 5}, expect=200).json()["id"]
+        # hidden from the store until approved, even though vendor asked for 'active'
+        self.assertEqual(Client().get("/api/products?q=Vendor+Widget").json().get("total", 0), 0)
+        self.assertEqual(self.owner.get(f"/api/admin/products/{pid}").json()["status"], "draft")
+        v.call("POST", f"/api/vendor/products/{pid}/images", files=[("files", ("a.png", png, "image/png"))], expect=200)
+        # vendor sees only own products; owner's product is not visible/editable to vendor
+        self.assertEqual([x["id"] for x in v.get("/api/vendor/products").json()["items"]], [pid])
+        v.get(f"/api/vendor/products/{mine['id']}", expect=404)
+        v.put(f"/api/vendor/products/{mine['id']}", {"name": "Hacked", "category_id": cat, "selling_price": 1}, expect=404)
+        v.call("PATCH", f"/api/vendor/products/{mine['id']}/stock", json={"stock": 999}, expect=404)
+        # owner approves -> visible in store with 'sold_by'
+        self.owner.post(f"/api/admin/vendor-products/{pid}/review", {"decision": "approve"}, expect=200)
+        self.assertEqual(self.owner.get(f"/api/admin/products/{pid}").json()["status"], "active")
+        slug = self.owner.get(f"/api/admin/products/{pid}").json()["slug"]
+        self.assertEqual(Client().get(f"/api/products/{slug}").json()["sold_by"], "Test Traders")
+        # stock change by vendor
+        v.call("PATCH", f"/api/vendor/products/{pid}/stock", json={"stock": 12}, expect=200)
+        self.assertEqual(self.owner.get(f"/api/admin/products/{pid}").json()["physical_stock"], 12)
+        # editing live content sends it back for approval
+        v.put(f"/api/vendor/products/{pid}", {"name": "Vendor Widget Pro", "category_id": cat, "selling_price": 250}, expect=200)
+        self.assertEqual(self.owner.get(f"/api/admin/products/{pid}").json()["status"], "draft")
+        # owner's own product shows 'Sold by' shop name
+        self.assertTrue(Client().get(f"/api/products/{mine['slug']}").json()["sold_by"])
+        # suspended vendor is locked out
+        self.owner.put(f"/api/admin/vendors/{vid}", {"business_name": "Test Traders", "contact_name": "Ravi", "commission_pct": 10, "status": "suspended"}, expect=200)
+        v.get("/api/vendor/products", expect=401)
+        c = Client(); c.register(); c.get("/api/vendor/products", expect=403); c.get("/api/admin/vendors", expect=403)
+
+    def test_21_vendor_business_dashboard(self):
+        import secrets as _s, sqlite3
+        em1, em2 = f"a{_s.token_hex(3)}@example.com", f"b{_s.token_hex(3)}@example.com"
+        for em, nm in ((em1, "Alpha Traders"), (em2, "Beta Traders")):
+            self.owner.post("/api/admin/vendors", {"business_name": nm, "contact_name": "Owner Person", "email": em, "password": "Vendor@12345", "commission_pct": 10}, expect=200)
+        vids = {v["email"]: v["id"] for v in self.owner.get("/api/admin/vendors").json()["items"]}
+        A, B = Client(), Client(); A.login(em1, "Vendor@12345"); B.login(em2, "Vendor@12345")
+        cat = self.cat["id"]
+        def vendor_product(cl, name):
+            pid = cl.post("/api/vendor/products", {"name": name, "category_id": cat, "selling_price": 1000, "stock": 20}, expect=200).json()["id"]
+            self.owner.post(f"/api/admin/vendor-products/{pid}/review", {"decision": "approve"}, expect=200)
+            return pid
+        pa, pb = vendor_product(A, "Alpha Item " + _s.token_hex(2)), vendor_product(B, "Beta Item " + _s.token_hex(2))
+        mine = self.new_product(stock=5)
+        c = Client(); c.register()
+        c.post("/api/cart", {"product_id": pa, "qty": 2}, expect=200); c.post("/api/cart", {"product_id": pb, "qty": 1}, expect=200); c.post("/api/cart", {"product_id": mine["id"], "qty": 1}, expect=200)
+        addr = c.add_address()
+        q = c.post("/api/checkout/quote", {"payment_method": "cod"}, expect=200).json()
+        o = c.post("/api/orders", {"address_id": addr["id"], "payment_method": "cod", "expected_total": q["grand_total"]}, expect=200).json()
+        oid = self.owner.get(f"/api/admin/orders?q={o['order_no']}").json()["items"][0]["id"]
+        # each vendor sees ONLY their own items, never the other vendor's or the owner's
+        la = A.get("/api/vendor/orders?filter=to_ship").json()["items"]
+        lb = B.get("/api/vendor/orders?filter=to_ship").json()["items"]
+        self.assertEqual([i["name"] for x in la if x["id"] == oid for i in x["items"]][0].startswith("Alpha"), True)
+        self.assertEqual(len([x for x in la if x["id"] == oid][0]["items"]), 1)
+        self.assertEqual(len([x for x in lb if x["id"] == oid][0]["items"]), 1)
+        self.assertNotIn("email", str([x for x in la if x["id"] == oid][0]))
+        self.assertEqual([x for x in la if x["id"] == oid][0]["total"], 2000.0)
+        # vendor B cannot act on a different vendor's part, and cannot touch an order with none of their items
+        other = c.order(mine["id"]).json()["order_no"]; ooid = self.owner.get(f"/api/admin/orders?q={other}").json()["items"][0]["id"]
+        A.post(f"/api/vendor/orders/{ooid}/fulfil", {"action": "pack"}, expect=404)
+        A.post(f"/api/vendor/orders/{oid}/fulfil", {"action": "ship"}, expect=400)  # tracking number required
+        A.post(f"/api/vendor/orders/{oid}/fulfil", {"action": "pack"}, expect=200)
+        A.post(f"/api/vendor/orders/{oid}/fulfil", {"action": "ship", "courier": "BlueDart", "tracking_no": "BD123"}, expect=200)
+        od = c.get(f"/api/orders/{o['order_no']}").json()
+        self.assertEqual([(x["vendor"], x["status"], x["tracking_no"]) for x in od["shipments"]], [("Alpha Traders", "shipped", "BD123")])
+        self.assertTrue(any("shipped" in (e.get("note") or "") for e in od["timeline"]))
+        self.assertTrue(any("items shipped" in n["title"] for n in c.get("/api/notifications").json()["items"]))
+        detail = self.owner.get(f"/api/admin/orders/{oid}").json()
+        self.assertEqual([p["status"] for p in detail["vendor_parts"]], ["shipped"])
+        self.assertTrue(any(i["vendor"] == "Alpha Traders" for i in detail["items"]))
+        # owner moves the order to delivered -> earnings appear (10% commission), still clearing for the return window
+        for st in ("confirmed", "packed", "dispatched", "delivered"):
+            self.owner.post(f"/api/admin/orders/{oid}/status", {"status": st}, expect=200)
+        ea = A.get("/api/vendor/earnings").json()
+        self.assertEqual(ea["summary"]["clearing"], 1800.0)
+        self.assertEqual(ea["summary"]["commission"], 200.0)
+        self.assertEqual(ea["summary"]["due_now"], 0)
+        self.assertEqual(B.get("/api/vendor/earnings").json()["summary"]["clearing"], 900.0)
+        self.owner.post(f"/api/admin/vendors/{vids[em1]}/payouts", {"method": "upi", "amount": 0}, expect=400)
+        # after the return window the money becomes payable (SQLite test database only)
+        if not os.environ.get("TEST_DATABASE_URL"):
+            con = sqlite3.connect(DB); con.execute("UPDATE orders SET delivered_at='2020-01-01T00:00:00' WHERE id=?", (oid,)); con.commit(); con.close()
+            led = self.owner.get(f"/api/admin/vendors/{vids[em1]}/ledger").json()
+            self.assertEqual(led["summary"]["due_now"], 1800.0)
+            self.owner.post(f"/api/admin/vendors/{vids[em1]}/payouts", {"method": "upi", "amount": 1, "reference": "UTR1"}, expect=409)
+            self.owner.post(f"/api/admin/vendors/{vids[em1]}/payouts", {"method": "upi", "amount": 1800, "reference": "UTR1"}, expect=200)
+            self.owner.post(f"/api/admin/vendors/{vids[em1]}/payouts", {"method": "upi", "amount": 1800}, expect=409)  # no double payment
+            es = A.get("/api/vendor/earnings").json()
+            self.assertEqual(es["summary"]["paid"], 1800.0); self.assertEqual(es["summary"]["due_now"], 0)
+            self.assertEqual(len(es["payouts"]), 1)
+        # overview + reports work and are scoped
+        ov = A.get("/api/vendor/overview").json()
+        self.assertEqual(ov["month"]["amount"], 2000.0)
+        self.assertEqual(B.get("/api/vendor/overview").json()["month"]["amount"], 1000.0)
+        rep = A.get("/api/vendor/report?kind=sales")
+        self.assertEqual(rep.status_code, 200); self.assertIn("Alpha Item", rep.text); self.assertNotIn("Beta Item", rep.text)
+        # a customer or an outsider cannot reach vendor data
+        c.get("/api/vendor/overview", expect=403); Client().get("/api/vendor/orders", expect=401)
+        A.get("/api/admin/vendors/1/ledger", expect=403)
+
+    def test_24_item_returns(self):
+        import secrets as _s, sqlite3
+        em = f"r{_s.token_hex(3)}@example.com"
+        self.owner.post("/api/admin/vendors", {"business_name": "Return Traders", "contact_name": "Owner Person", "email": em, "password": "Vendor@12345", "commission_pct": 10}, expect=200)
+        vid = [v["id"] for v in self.owner.get("/api/admin/vendors").json()["items"] if v["email"] == em][0]
+        V = Client(); V.login(em, "Vendor@12345")
+        pid = V.post("/api/vendor/products", {"name": "Ret Item " + _s.token_hex(2), "category_id": self.cat["id"], "selling_price": 1000, "stock": 20}, expect=200).json()["id"]
+        self.owner.post(f"/api/admin/vendor-products/{pid}/review", {"decision": "approve"}, expect=200)
+        mine = self.new_product(stock=5)
+        c = Client(); c.register()
+        c.post("/api/cart", {"product_id": pid, "qty": 3}, expect=200); c.post("/api/cart", {"product_id": mine["id"], "qty": 1}, expect=200)
+        addr = c.add_address()
+        q = c.post("/api/checkout/quote", {"payment_method": "cod"}, expect=200).json()
+        o = c.post("/api/orders", {"address_id": addr["id"], "payment_method": "cod", "expected_total": q["grand_total"]}, expect=200).json()
+        no = o["order_no"]; oid = self.owner.get(f"/api/admin/orders?q={no}").json()["items"][0]["id"]
+        det = c.get(f"/api/orders/{no}").json()
+        item = [i for i in det["items"] if i["product_id"] == pid][0]
+        c.post(f"/api/orders/{no}/item-returns", {"items": [{"item_id": item["id"], "qty": 1}], "reason": "Broken"}, expect=400)  # not delivered yet
+        for st in ("confirmed", "packed", "dispatched", "delivered"):
+            self.owner.post(f"/api/admin/orders/{oid}/status", {"status": st}, expect=200)
+        self.owner.post(f"/api/admin/orders/{oid}/collect-cash", expect=200)
+        det = c.get(f"/api/orders/{no}").json()
+        self.assertTrue(det["actions"]["can_return_items"]); self.assertEqual([i["returnable"] for i in det["items"] if i["product_id"] == pid], [3])
+        c.post(f"/api/orders/{no}/item-returns", {"items": [{"item_id": item["id"], "qty": 4}], "reason": "Broken"}, expect=400)
+        c.post(f"/api/orders/{no}/item-returns", {"items": [{"item_id": item["id"], "qty": 1}], "reason": "Broken"}, expect=200)
+        c.post(f"/api/orders/{no}/return", {"reason": "whole"}, expect=400)  # whole-order return blocked
+        self.assertEqual([i["returnable"] for i in c.get(f"/api/orders/{no}").json()["items"] if i["product_id"] == pid], [2])
+        rid = [r["id"] for r in self.owner.get("/api/admin/item-returns").json()["items"] if r["order_no"] == no][0]
+        self.owner.post(f"/api/admin/item-returns/{rid}/receive", {}, expect=400)  # must approve first
+        # the vendor decides on their own product's return; another vendor / a customer cannot
+        em2 = f"x{_s.token_hex(3)}@example.com"
+        self.owner.post("/api/admin/vendors", {"business_name": "Other Traders", "contact_name": "Owner Person", "email": em2, "password": "Vendor@12345", "commission_pct": 10}, expect=200)
+        X = Client(); X.login(em2, "Vendor@12345")
+        X.post(f"/api/vendor/item-returns/{rid}/decide", {"action": "approve"}, expect=404)
+        c.post(f"/api/vendor/item-returns/{rid}/decide", {"action": "approve"}, expect=403)
+        V.post(f"/api/vendor/item-returns/{rid}/decide", {"action": "approve"}, expect=200)
+        V.post(f"/api/vendor/item-returns/{rid}/decide", {"action": "reject"}, expect=400)  # already decided
+        before = self.owner.get(f"/api/admin/products/{pid}").json()["physical_stock"]
+        self.owner.post(f"/api/admin/item-returns/{rid}/refund", {}, expect=400)  # must receive first
+        V.post(f"/api/vendor/item-returns/{rid}/receive", {"restock": True}, expect=200)
+        self.assertEqual(self.owner.get(f"/api/admin/products/{pid}").json()["physical_stock"], before + 1)
+        V.post(f"/api/vendor/item-returns/{rid}/refund", {}, expect=404)  # refunds stay with the owner
+        self.owner.post(f"/api/admin/item-returns/{rid}/refund", {"reference": "UTRX"}, expect=200)
+        self.owner.post(f"/api/admin/item-returns/{rid}/refund", {}, expect=400)  # no double refund
+        row = [r for r in c.get(f"/api/orders/{no}").json()["item_returns"] if r["id"] == rid][0]
+        self.assertEqual(row["status"], "refunded"); self.assertEqual(row["amount"], 1000.0)
+        # vendor earnings: 3 x 1000 - 10% = 2700, minus the returned unit (900) = 1800, still clearing
+        ea = V.get("/api/vendor/earnings").json()
+        self.assertEqual(ea["summary"]["clearing"], 1800.0); self.assertEqual(ea["summary"]["commission"], 200.0)
+        self.assertEqual(len(ea["adjustments"]), 1)
+        self.assertEqual(len(V.get("/api/vendor/item-returns").json()["items"]), 1)
+        Client().get("/api/admin/item-returns", expect=401)
+        ms = self.owner.get("/api/admin/marketplace-summary", expect=200).json()
+        self.assertGreater(ms["totals"]["commission"], 0); self.assertTrue(any(x["name"] == "Return Traders" for x in ms["vendors"]))
+        V.get("/api/admin/marketplace-summary", expect=403)
+        V.put("/api/vendor/payout-details", {"upi": "bad"}, expect=400)
+        V.put("/api/vendor/payout-details", {"bank_holder": "R Traders", "bank_account": "123456789012", "bank_ifsc": "SBIN0001234"}, expect=200)
+        V.put("/api/vendor/payout-details", {"upi": "rtraders@okbank"}, expect=200)
+        self.assertEqual(V.get("/api/vendor/payout-details").json()["upi"], "rtraders@okbank")
+        self.assertEqual(self.owner.get(f"/api/admin/vendors/{vid}/ledger").json()["vendor"]["upi"], "rtraders@okbank")
+        # a rejected request frees the quantity again
+        c.post(f"/api/orders/{no}/item-returns", {"items": [{"item_id": item["id"], "qty": 2}], "reason": "Changed mind"}, expect=200)
+        r2 = [r["id"] for r in self.owner.get("/api/admin/item-returns").json()["items"] if r["order_no"] == no and r["status"] == "requested"][0]
+        self.owner.post(f"/api/admin/item-returns/{r2}/decide", {"action": "reject", "note": "Used"}, expect=200)
+        self.assertEqual([i["returnable"] for i in c.get(f"/api/orders/{no}").json()["items"] if i["product_id"] == pid], [2])
+        # after the window the rest becomes payable; pay it; then a later return is clawed back from the next payout
+        if not os.environ.get("TEST_DATABASE_URL"):
+            con = sqlite3.connect(DB); con.execute("UPDATE orders SET delivered_at='2020-01-01T00:00:00' WHERE id=?", (oid,)); con.commit(); con.close()
+            self.assertEqual(self.owner.get(f"/api/admin/vendors/{vid}/ledger").json()["summary"]["due_now"], 1800.0)
+            self.owner.post(f"/api/admin/vendors/{vid}/payouts", {"method": "upi", "amount": 1800, "reference": "U9"}, expect=200)
+
+    def test_22_vendor_shop_page(self):
+        import secrets as _s, base64
+        png = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==")
+        em = f"s{_s.token_hex(3)}@example.com"
+        self.owner.post("/api/admin/vendors", {"business_name": "Shop Page Co", "contact_name": "Ravi", "email": em, "password": "Vendor@12345", "commission_pct": 10}, expect=200)
+        vid = [v for v in self.owner.get("/api/admin/vendors").json()["items"] if v["email"] == em][0]["id"]
+        v = Client(); v.login(em, "Vendor@12345")
+        pid = v.post("/api/vendor/products", {"name": "Shop Item " + _s.token_hex(2), "category_id": self.cat["id"], "selling_price": 100, "stock": 3}, expect=200).json()["id"]
+        shop = Client().get(f"/api/shops/{vid}").json()
+        self.assertEqual(shop["items"], [])  # unapproved products are not shown
+        self.owner.post(f"/api/admin/vendor-products/{pid}/review", {"decision": "approve"}, expect=200)
+        v.put("/api/vendor/shop", {"about": "We sell good things"}, expect=200)
+        v.call("POST", "/api/vendor/shop/logo", files={"file": ("l.png", png, "image/png")}, expect=200)
+        shop = Client().get(f"/api/shops/{vid}").json()
+        self.assertEqual((shop["name"], shop["about"], len(shop["items"])), ("Shop Page Co", "We sell good things", 1))
+        self.assertTrue(shop["logo"].startswith("/uploads/vendors/"))
+        slug = self.owner.get(f"/api/admin/products/{pid}").json()["slug"]
+        self.assertEqual(Client().get(f"/api/products/{slug}").json()["sold_by_id"], vid)
+        det = Client().get(f"/api/products/{slug}").json()
+        self.assertEqual((det["vendor"]["name"], det["vendor"]["about"], det["vendor"]["products"]), ("Shop Page Co", "We sell good things", 1))
+        self.assertIn("Shop Page Co", [x["name"] for x in Client().get("/api/home").json()["vendors"]])
+        self.assertEqual([c["vendor"] for c in Client().get("/api/products?q=Shop+Item").json()["items"] if c["id"] == pid], ["Shop Page Co"])
+        c = Client(); c.register(); c.post("/api/cart", {"product_id": pid, "qty": 1}, expect=200)
+        self.assertEqual(c.get("/api/cart").json()["items"][0]["vendor"], "Shop Page Co")
+        mine = self.new_product(stock=3); self.assertIsNone(Client().get(f"/api/products/{mine['slug']}").json()["vendor"])
+        self.owner.put(f"/api/admin/vendors/{vid}", {"business_name": "Shop Page Co", "contact_name": "Ravi", "commission_pct": 10, "status": "suspended"}, expect=200)
+        Client().get(f"/api/shops/{vid}", expect=404)
+        Client().get("/api/shops/999999", expect=404)
+
+    def test_23_vendor_application(self):
+        import secrets as _s
+        em = f"app{_s.token_hex(3)}@example.com"
+        form = {"business_name": "Himalaya Gear", "contact_name": "Dil Bahadur", "phone": "9876500000", "email": em, "password": "Gurkha@2026", "about": "Trekking and camping gear", "address": "Dehradun"}
+        anon = Client()
+        anon.post("/api/vendor-apply", {**form, "password": "short"}, expect=400)
+        anon.post("/api/vendor-apply", {**form, "about": ""}, expect=400)
+        anon.post("/api/vendor-apply", form, expect=200)
+        anon.post("/api/vendor-apply", form, expect=409)  # already applied
+        # cannot sign in until approved, and applicants are not users yet
+        Client().post("/api/auth/login", {"email": em, "password": "Gurkha@2026"}, expect=401)
+        apps = self.owner.get("/api/admin/vendor-applications").json()["items"]
+        aid = [a for a in apps if a["email"] == em][0]["id"]
+        self.assertNotIn("password", str(apps))
+        Client().get("/api/admin/vendor-applications", expect=401)
+        c = Client(); c.register(); c.get("/api/admin/vendor-applications", expect=403)
+        self.owner.post(f"/api/admin/vendor-applications/{aid}/approve", {"commission_pct": 12}, expect=200)
+        self.owner.post(f"/api/admin/vendor-applications/{aid}/approve", {"commission_pct": 12}, expect=404)  # only once
+        v = Client(); v.login(em, "Gurkha@2026")
+        self.assertEqual(v.get("/api/vendor/me").json()["vendor"]["commission_pct"], 12)
+        self.assertEqual(v.get("/api/vendor/shop").json()["about"], "Trekking and camping gear")
+        anon.post("/api/vendor-apply", form, expect=409)  # email now has an account
+        em2 = f"rej{_s.token_hex(3)}@example.com"
+        anon.post("/api/vendor-apply", {**form, "email": em2}, expect=200)
+        aid2 = [a for a in self.owner.get("/api/admin/vendor-applications").json()["items"] if a["email"] == em2][0]["id"]
+        self.owner.post(f"/api/admin/vendor-applications/{aid2}/reject", {"note": "Not now"}, expect=200)
+        Client().post("/api/auth/login", {"email": em2, "password": "Gurkha@2026"}, expect=401)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
