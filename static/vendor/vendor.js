@@ -27,7 +27,7 @@
       <label class="fld"><span>Password</span><input name="password" type="password" required autocomplete="current-password"></label>
       <div id="le" role="alert" style="color:#c62828;font-weight:600;margin-bottom:10px" hidden></div>
       <button class="btn btn-primary btn-block" style="min-height:48px">Sign in</button>
-      <p style="margin-top:14px;font-size:13px">No login yet? Ask the store owner to create one for you.</p><p><a href="/" style="color:var(--teal)">← Back to store</a></p></form></div>`;
+      <p style="margin-top:14px;font-size:14px">New here? <a href="/#/sell" style="color:var(--teal);font-weight:700">Apply to become a vendor</a></p><p><a href="/" style="color:var(--teal)">← Back to store</a></p></form></div>`;
     document.getElementById("lf").onsubmit = async (e) => {
       e.preventDefault();
       const err = document.getElementById("le"); err.hidden = true;
