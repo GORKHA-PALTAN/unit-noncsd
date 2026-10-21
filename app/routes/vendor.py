@@ -507,7 +507,13 @@ def vendor_fulfil(ctx):
         db.run("UPDATE vendor_fulfillment SET status=?, courier=COALESCE(?,courier), tracking_no=COALESCE(?,tracking_no), updated_at=? WHERE order_id=? AND vendor_id=?", (new, courier, track, t, oid, v["id"]))
     else:
         db.run("INSERT INTO vendor_fulfillment(order_id, vendor_id, status, courier, tracking_no, updated_at) VALUES (?,?,?,?,?,?)", (oid, v["id"], new, courier, track, t))
-    osvc.add_event(db, oid, o["status"], f"{v['business_name']}: {'packed their items' if action == 'pack' else 'shipped their items — ' + (courier or 'Courier') + ' ' + (track or '')}", ctx.uid, visible=False)
+    n_items = db.val("SELECT COALESCE(SUM(i.qty),0) FROM order_items i JOIN product_vendors pv ON pv.product_id=i.product_id WHERE i.order_id=? AND pv.vendor_id=?", (oid, v["id"]))
+    if action == "pack":
+        msg = f"{v['business_name']} has packed {n_items} item(s) from your order."
+    else:
+        msg = f"{v['business_name']} has shipped {n_items} item(s) from your order — {courier or 'Courier'} tracking number {track}."
+    osvc.add_event(db, oid, o["status"], msg, ctx.uid, visible=True)
+    notify(o["user_id"], f"Order {o['order_no']}: {'items packed' if action == 'pack' else 'items shipped'}", msg, f"#/order/{o['order_no']}", email=(action == "ship"))
     for ow in db.all("SELECT id FROM users WHERE role='owner' AND status='active'"):
         notify(ow["id"], f"{v['business_name']}: order {o['order_no']} {'packed' if action == 'pack' else 'shipped'}",
                "Open the order and update its status." , f"#/orders", email=False)
