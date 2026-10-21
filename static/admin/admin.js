@@ -27,6 +27,7 @@
     ["Store", [
       ["share", "Share & QR codes", null, I('<rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><path d="M14 14h3v3h-3zM20 14v1M14 20h1M17 17h4v4"/>')],
       ["marketing", "Banners & coupons", "marketing", I('<path d="M3 11v2a1 1 0 0 0 1 1h3l5 4V6L7 10H4a1 1 0 0 0-1 1z"/><path d="M16 8a5 5 0 0 1 0 8"/>')],
+      ["vendors", "Vendors", "staff", I('<path d="M3 9l1-5h16l1 5"/><path d="M4 9v11h16V9"/><path d="M9 20v-6h6v6"/>')],
       ["staff", "Staff & permissions", "staff", I('<circle cx="12" cy="8" r="4"/><path d="M4 21c1-4 4.5-6 8-6s7 2 8 6"/><path d="m17 3 2 2 3-3"/>')],
       ["settings", "Settings", "settings", I('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>')],
       ["audit", "Activity log", "settings", I('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>')],
@@ -124,7 +125,7 @@
     const navItem = NAV.flatMap((g) => g[1]).find((n) => n[0] === page);
     if (navItem && !can(navItem[2])) { el.innerHTML = `<div class="empty"><div class="ico">🔒</div><h3>No access</h3><p>Your account doesn't have permission for this section. Ask the owner to grant it.</p></div>`; return; }
     try {
-      const pages = { share, overview, orders, returns, customers, buyers, products, categories, inventory, insights, reports, finance, marketing, staff, settings, audit };
+      const pages = { share, overview, orders, returns, customers, buyers, products, categories, inventory, insights, reports, finance, marketing, vendors, staff, settings, audit };
       if (!pages[page]) throw Object.assign(new Error("Page not found"), { status: 404 });
       await pages[page](el, parts.slice(1), q);
     } catch (e) {
@@ -339,8 +340,9 @@
         <div class="card" style="margin-bottom:14px"><div class="card-h"><div><h2 style="font-size:20px">${esc(o.order_no)}</h2><div class="sub">Placed ${fmt.datetime(o.created_at)} · ${esc(PM[o.payment_method] || o.payment_method)}</div></div>
           <div style="display:flex;gap:6px">${stPill(o.status, o.status_label)} ${payPill(o)}</div></div>
           <div class="tbl-wrap" style="margin:0"><table class="tbl"><thead><tr><th></th><th>Item</th><th>SKU</th><th class="num">Qty</th><th class="num">Unit price</th>${"cost_total" in o ? '<th class="num">Unit cost</th>' : ""}<th class="num">Line total</th></tr></thead><tbody>
-            ${o.items.map((i) => `<tr><td><img class="thumb" src="${esc(i.image)}" alt=""></td><td class="pname">${esc(i.name)}</td><td class="muted">${esc(i.sku || "")}</td><td class="num">${i.qty}</td><td class="num">${fmt.inr(i.unit_price)}</td>${"cost_total" in o ? `<td class="num">${fmt.inr(i.cost_price)}</td>` : ""}<td class="num">${fmt.inr(i.line_total)}</td></tr>`).join("")}
+            ${o.items.map((i) => `<tr><td><img class="thumb" src="${esc(i.image)}" alt=""></td><td class="pname">${esc(i.name)}${i.vendor ? `<div><span class="pill teal">Vendor: ${esc(i.vendor)}</span></div>` : ""}</td><td class="muted">${esc(i.sku || "")}</td><td class="num">${i.qty}</td><td class="num">${fmt.inr(i.unit_price)}</td>${"cost_total" in o ? `<td class="num">${fmt.inr(i.cost_price)}</td>` : ""}<td class="num">${fmt.inr(i.line_total)}</td></tr>`).join("")}
           </tbody></table></div>
+          ${(o.vendor_parts || []).length ? `<div style="margin-top:12px;font-size:14px"><b>Vendor packing:</b> ${o.vendor_parts.map((x) => `<div>${esc(x.vendor)} — ${x.status === "shipped" ? "✅ shipped" : "📦 packed"}${x.tracking_no ? ` · ${esc(x.courier || "Courier")} ${esc(x.tracking_no)}` : ""}</div>`).join("")}<div class="muted">When all parts are ready, move this order to Dispatched.</div></div>` : ""}
           <div style="max-width:340px;margin-left:auto;margin-top:12px;font-size:14px">
             <div style="display:flex;justify-content:space-between"><span>Items</span><span>${fmt.inr(o.subtotal)}</span></div>
             ${o.coupon_discount ? `<div style="display:flex;justify-content:space-between"><span>Coupon ${esc(o.coupon_code)}</span><span>− ${fmt.inr(o.coupon_discount)}</span></div>` : ""}
@@ -630,7 +632,7 @@
       const edit = can("products");
       box.innerHTML = d.items.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th></th><th>Product</th><th>Category</th><th>Status</th>${"cost_price" in d.items[0] ? '<th class="num">Cost</th>' : ""}<th class="num">Selling price</th><th class="num">MRP</th><th class="num">Avail.</th><th class="num">Reserved</th><th class="num">Sold</th><th class="num">Rating</th><th></th></tr></thead><tbody>
         ${d.items.map((r) => `<tr><td><img class="thumb" src="${esc(r.image || "/static/common/placeholder.svg")}" alt=""></td>
-          <td><a href="#/products/${r.id}" class="pname">${esc(r.name)}</a> ${r.is_sample ? '<span class="pill sample">SAMPLE</span>' : ""}<div class="muted">${esc(r.sku)} · ${esc(r.brand || "")}</div></td>
+          <td><a href="#/products/${r.id}" class="pname">${esc(r.name)}</a> ${r.is_sample ? '<span class="pill sample">SAMPLE</span>' : ""}${r.vendor ? ` <span class="pill teal">Vendor: ${esc(r.vendor)}</span>` : ""}<div class="muted">${esc(r.sku)} · ${esc(r.brand || "")}</div></td>
           <td>${esc(r.category || "—")}<div class="muted">${esc(r.subcategory || "")}</div></td>
           <td>${edit ? `<select class="inp" data-qs="${r.id}" style="min-height:32px;padding:2px 6px;width:auto">${["active", "inactive", "draft", "out_of_stock"].map((s) => `<option value="${s}" ${r.status === s ? "selected" : ""}>${s.replace(/_/g, " ")}</option>`).join("")}</select>` : esc(r.status)}</td>
           ${"cost_price" in r ? `<td class="num">${fmt.inr(r.cost_price)}</td>` : ""}
@@ -993,6 +995,69 @@
   }
 
   // ------------------------------------------------------------------ MARKETING
+  // ------------------------------------------------------------------ vendors
+  async function vendors(el) {
+    const [vd, pp] = await Promise.all([api("GET", "/api/admin/vendors"), api("GET", "/api/admin/vendor-products?approval=pending")]);
+    const field = (id, label, val = "", type = "text", extra = "") => `<label class="fld"><span>${label}</span><input id="${id}" type="${type}" value="${esc(val)}" ${extra}></label>`;
+    el.innerHTML = `<div class="cards">
+      <div class="card c12"><h2>Vendor sign-in page</h2><div class="sub">Give your vendors this link and the email and password you create for them:</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><input class="inp" id="vl" readonly value="${esc(location.origin)}/vendor" style="flex:1;min-width:240px"><button class="btn btn-sm" id="vlc">Copy link</button></div></div>
+      <div class="card c12"><div class="card-h"><div><h2>Products waiting for your approval ${pp.items.length ? `<span class="pill bad">${pp.items.length}</span>` : ""}</h2><div class="sub">Vendor products stay hidden from customers until you approve them.</div></div></div>
+        <div class="tbl-wrap"><table class="tbl"><thead><tr><th></th><th>Product</th><th>Vendor</th><th class="num">Price</th><th class="num">Stock</th><th></th></tr></thead><tbody>
+        ${pp.items.map((x) => `<tr><td>${x.image ? `<img class="thumb" src="${esc(x.image)}" alt="">` : '<span class="muted">No photo</span>'}</td><td class="pname">${esc(x.name)}<div class="muted">${esc(x.category || "")}${x.brand ? " · " + esc(x.brand) : ""}</div><div class="muted" style="max-width:340px">${esc((x.description || "").slice(0, 140))}</div></td><td>${esc(x.vendor)}</td><td class="num">${fmt.inr(x.price)}</td><td class="num">${x.stock}</td>
+          <td><div style="display:flex;gap:6px"><button class="btn btn-primary btn-sm" data-ap="${x.id}">Approve</button><button class="btn btn-sm" data-rj="${x.id}" style="color:#c62828">Reject</button></div></td></tr>`).join("") || `<tr><td colspan="6" class="empty-sm">Nothing waiting. 🎉</td></tr>`}</tbody></table></div></div>
+      <div class="card c12"><div class="card-h"><div><h2>Vendors</h2><div class="sub">Add sellers who list their own products on your store.</div></div><button class="btn btn-primary btn-sm" id="vadd">+ Add vendor</button></div>
+        <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Business</th><th>Contact</th><th class="num">Commission</th><th class="num">Products</th><th class="num">Live</th><th class="num">To pay now</th><th>Status</th><th></th></tr></thead><tbody>
+        ${vd.items.map((v) => `<tr><td class="pname">${esc(v.business_name)}<div class="muted">${esc(v.email)}</div></td><td>${esc(v.contact_name)}<div class="muted">${esc(v.phone || "")}</div></td><td class="num">${v.commission_pct}%</td><td class="num">${v.products}${v.pending ? ` <span class="pill bad">${v.pending} new</span>` : ""}</td><td class="num">${v.live}</td><td class="num"><b>${fmt.inr(v.due_now)}</b></td>
+          <td>${v.user_status === "active" ? '<span class="pill ok">Active</span>' : '<span class="pill bad">Suspended</span>'}</td><td><div style="display:flex;gap:6px"><button class="btn btn-sm" data-vp="${v.id}">💰 Earnings & pay</button><button class="btn btn-sm" data-ve="${v.id}">Edit</button></div></td></tr>`).join("") || `<tr><td colspan="8" class="empty-sm">No vendors yet.</td></tr>`}</tbody></table></div></div></div>`;
+    el.querySelector("#vlc").onclick = () => { navigator.clipboard?.writeText(el.querySelector("#vl").value); toast("Link copied"); };
+    const vdlg = async (x = {}) => {
+      const ok = await modal({ title: x.id ? "Edit vendor" : "Add vendor", body: `
+        <div class="row2">${field("vb", "Business name", x.business_name || "", "text", 'maxlength="100"')}${field("vc", "Contact person", x.contact_name || "", "text", 'maxlength="80"')}</div>
+        <div class="row2">${field("ve", "Email (their login)", x.email || "", "email", x.id ? "readonly" : "")}${field("vp", "Phone", x.phone || "", "tel")}</div>
+        ${field("vpw", x.id ? "New password (leave empty to keep)" : "Password for them", "", "text", 'autocomplete="off"')}<small class="muted">At least 8 characters with letters and numbers.</small>
+        <div class="row2">${field("vcm", "Commission % you keep", x.commission_pct ?? 10, "number", 'min="0" max="90" step="0.5"')}${field("vg", "GST number (optional)", x.gst_no || "")}</div>
+        ${field("va", "Address", x.address || "")}
+        <div class="row2">${field("vbh", "Bank account holder", x.bank_holder || "")}${field("vba", "Bank account number", x.bank_account || "")}</div>
+        <div class="row2">${field("vif", "IFSC", x.bank_ifsc || "")}${field("vu", "UPI ID", x.upi || "")}</div>
+        ${x.id ? `<label class="fld"><span>Status</span><select id="vs"><option value="active" ${x.user_status === "active" ? "selected" : ""}>Active</option><option value="suspended" ${x.user_status !== "active" ? "selected" : ""}>Suspended (hides their products)</option></select></label>` : ""}`,
+        actions: [{ label: "Cancel", cls: "btn-ghost" }, { label: "Save", cls: "btn-primary", handler: (m) => {
+          const g = (i) => m.querySelector("#" + i).value;
+          const d = { business_name: g("vb"), contact_name: g("vc"), phone: g("vp"), commission_pct: g("vcm"), gst_no: g("vg"), address: g("va"), bank_holder: g("vbh"), bank_account: g("vba"), bank_ifsc: g("vif"), upi: g("vu") };
+          if (x.id) { d.status = g("vs"); if (g("vpw")) d.password = g("vpw"); return api("PUT", "/api/admin/vendors/" + x.id, d); }
+          d.email = g("ve"); d.password = g("vpw"); return api("POST", "/api/admin/vendors", d);
+        } }] });
+      if (ok) { toast("Vendor saved"); vendors(el); }
+    };
+    const payDlg = async (id) => {
+      const d = await api("GET", `/api/admin/vendors/${id}/ledger`);
+      const S = d.summary, V = d.vendor;
+      const ok = await modal({ title: "Earnings & payment · " + V.business_name, wide: true, body: `
+        <div class="cards" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:12px">
+          <div class="card"><div class="sub">Ready to pay now</div><h2>${fmt.inr(S.due_now)}</h2></div>
+          <div class="card"><div class="sub">Clearing (return window ${S.window_days} days)</div><h2>${fmt.inr(S.clearing)}</h2></div>
+          <div class="card"><div class="sub">On hold (returns)</div><h2>${fmt.inr(S.hold)}</h2></div>
+          <div class="card"><div class="sub">Already paid</div><h2>${fmt.inr(S.paid)}</h2></div></div>
+        <p class="muted" style="font-size:14px">Your commission so far: ${fmt.inr(S.commission)} (${V.commission_pct}%). ${S.clawback ? `<b>${fmt.inr(S.clawback)}</b> is taken off because of returns after an earlier payment.` : ""}</p>
+        <div class="vhelp" style="background:#eef6ff;border:1px solid #b9d7ff;border-radius:10px;padding:10px 12px;font-size:14px"><b>Pay to:</b> ${esc(V.bank_holder || V.contact_name)}${V.upi ? ` · UPI <b>${esc(V.upi)}</b>` : ""}${V.bank_account ? ` · A/C <b>${esc(V.bank_account)}</b> · IFSC <b>${esc(V.bank_ifsc || "")}</b>` : ""}${!V.upi && !V.bank_account ? " — no bank details saved yet (Edit vendor to add)." : ""}</div>
+        ${S.due_now > 0 ? `<div class="row2" style="margin-top:12px"><label class="fld"><span>How did you pay?</span><select id="pm"><option value="upi">UPI</option><option value="bank">Bank transfer</option><option value="cash">Cash</option></select></label><label class="fld"><span>Reference / UTR (optional)</span><input id="pr"></label></div>
+        <small class="muted">Pay the vendor first (outside this app), then press “Mark as paid”. This records ${fmt.inr(S.due_now)} as paid.</small>` : `<p><b>Nothing is ready to pay yet.</b> Money becomes ready after delivery and the return window.</p>`}
+        ${d.payouts.length ? `<h3 style="margin:16px 0 6px">Payments made</h3><div class="tbl-wrap"><table class="tbl"><tbody>${d.payouts.map((p) => `<tr><td>${fmt.date(p.created_at)}</td><td class="num"><b>${fmt.inr(p.amount)}</b></td><td>${esc((p.method || "").toUpperCase())}</td><td class="muted">${esc(p.reference || "")}</td></tr>`).join("")}</tbody></table></div>` : ""}`,
+        actions: [{ label: "Close", cls: "btn-ghost" }, ...(S.due_now > 0 ? [{ label: "Mark as paid " + fmt.inr(S.due_now), cls: "btn-primary", handler: async (m) => {
+          try { await api("POST", `/api/admin/vendors/${id}/payouts`, { amount: S.due_now, method: m.querySelector("#pm").value, reference: m.querySelector("#pr").value }); toast("Payment recorded"); return true; } catch (e) { toast(e.message, "err"); return false; } } }] : [])] });
+      if (ok) vendors(el);
+    };
+    el.querySelectorAll("[data-vp]").forEach((b) => (b.onclick = () => payDlg(b.dataset.vp)));
+    el.querySelector("#vadd").onclick = () => vdlg();
+    el.querySelectorAll("[data-ve]").forEach((b) => (b.onclick = () => vdlg(vd.items.find((v) => v.id == b.dataset.ve))));
+    el.querySelectorAll("[data-ap]").forEach((b) => (b.onclick = async () => { try { await api("POST", `/api/admin/vendor-products/${b.dataset.ap}/review`, { decision: "approve" }); toast("Approved — now live in your store"); vendors(el); } catch (e) { toast(e.message, "err"); } }));
+    el.querySelectorAll("[data-rj]").forEach((b) => (b.onclick = async () => {
+      const note = await promptDialog("Reject product", "Tell the vendor why (optional)", { confirmLabel: "Reject", required: false, textarea: true });
+      if (note === null || note === undefined || note === false) return;
+      try { await api("POST", `/api/admin/vendor-products/${b.dataset.rj}/review`, { decision: "reject", note: String(note) }); toast("Rejected"); vendors(el); } catch (e) { toast(e.message, "err"); }
+    }));
+  }
+
   async function marketing(el) {
     const [b, c, meta] = await Promise.all([api("GET", "/api/admin/banners"), api("GET", "/api/admin/coupons"), api("GET", "/api/meta")]);
     el.innerHTML = `<div class="cards">
@@ -1000,7 +1065,7 @@
       <div class="card c12"><div class="card-h"><div><h2>Home page banners</h2><div class="sub">Shown as the hero carousel. Leave department empty to show on every tab.</div></div><button class="btn btn-primary btn-sm" id="badd">+ Add banner</button></div>
         <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Photo</th><th>Order</th><th>Title</th><th>Theme</th><th>Department</th><th>Link</th><th>Status</th><th></th></tr></thead><tbody>
         ${b.items.map((x) => `<tr><td>${x.image_url ? `<img src="${esc(x.image_url)}" alt="" style="width:56px;height:56px;object-fit:cover;border-radius:8px;display:block">` : `<span class="muted">Auto</span>`}</td><td>${x.sort}</td><td class="pname">${esc(x.title)}<div class="muted">${esc(x.subtitle || "")}</div></td><td><span class="pill">${esc(x.theme)}</span></td><td>${esc(x.department || "All")}</td><td class="muted">${esc(x.link || "")}</td><td>${x.active ? '<span class="pill ok">Live</span>' : '<span class="pill">Off</span>'}</td>
-          <td><div style="display:flex;gap:6px"><button class="btn btn-sm" data-bp="${x.id}">📷 Photo</button><button class="btn btn-sm" data-bv="${x.id}">🎬 Video${x.video_url ? " ✓" : ""}</button><button class="btn btn-sm" data-be="${x.id}">Edit</button><button class="btn btn-sm" data-bd="${x.id}" style="color:#c62828">Delete</button></div></td></tr>`).join("") || `<tr><td colspan="8" class="empty-sm">No banners.</td></tr>`}</tbody></table></div></div>
+          <td><div style="display:flex;gap:6px"><button class="btn btn-sm" data-bp="${x.id}">📷 Photo</button><button class="btn btn-sm" data-ba="${x.id}">🎵 Audio${x.audio_url ? " ✓" : ""}</button><button class="btn btn-sm" data-bv="${x.id}">🎬 Video${x.video_url ? " ✓" : ""}</button><button class="btn btn-sm" data-be="${x.id}">Edit</button><button class="btn btn-sm" data-bd="${x.id}" style="color:#c62828">Delete</button></div></td></tr>`).join("") || `<tr><td colspan="8" class="empty-sm">No banners.</td></tr>`}</tbody></table></div></div>
       <div class="card c12"><div class="card-h"><div><h2>Coupons & promotional offers</h2><div class="sub">Product-level discounts are set with MRP vs selling price on each product.</div></div><button class="btn btn-primary btn-sm" id="cadd">+ Add coupon</button></div>
         <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Code</th><th>Offer</th><th class="num">Min order</th><th>Valid</th><th class="num">Used</th><th>Status</th><th></th></tr></thead><tbody>
         ${c.items.map((x) => `<tr><td><b>${esc(x.code)}</b><div class="muted">${esc(x.description || "")}</div></td><td>${x.kind === "pct" ? `${x.value}% off${x.max_discount ? ` (max ${fmt.inr(x.max_discount)})` : ""}` : fmt.inr(x.value) + " off"}</td><td class="num">${fmt.inr(x.min_order)}</td>
@@ -1034,6 +1099,22 @@
             if (!f) { toast("Choose a photo first", "err"); return false; }
             const fd = new FormData(); fd.append("file", f);
             try { await api("POST", `/api/admin/banners/${x.id}/image`, fd); toast("Banner photo saved"); marketing(el); return true; } catch (e) { toast(e.message, "err"); return false; }
+          } }] });
+    }));
+    el.querySelectorAll("[data-ba]").forEach((bt) => (bt.onclick = () => {
+      const x = b.items.find((y) => y.id == bt.dataset.ba);
+      modal({ title: "Banner audio · " + x.title, body: `<div style="text-align:center;margin-bottom:12px">${x.audio_url ? `<audio src="${esc(x.audio_url)}" controls style="width:100%"></audio>` : `<p class="muted" style="margin:0">No audio yet.</p>`}</div>
+        <label class="fld"><span>Choose audio (MP3, M4A, OGG or WAV, up to 8 MB)</span><input type="file" id="baf" accept="audio/*"></label>
+        <p class="muted" style="font-size:13px;margin:6px 0 0">Phones and browsers do not allow sound to start by itself. Customers tap the 🔇 button on the banner to hear it. Use a short clip; it repeats.</p>`,
+        actions: [{ label: "Close", cls: "btn-ghost" },
+          ...(x.audio_url ? [{ label: "Remove audio", cls: "", handler: async () => {
+            try { await api("DELETE", `/api/admin/banners/${x.id}/audio`); toast("Audio removed"); marketing(el); return true; } catch (e) { toast(e.message, "err"); return false; } } }] : []),
+          { label: "Upload", cls: "btn-primary", handler: async (m) => {
+            const f = m.querySelector("#baf").files[0];
+            if (!f) { toast("Choose an audio file first", "err"); return false; }
+            if (f.size > 8 * 1024 * 1024) { toast("Audio is bigger than 8 MB", "err"); return false; }
+            const fd = new FormData(); fd.append("file", f);
+            try { await api("POST", `/api/admin/banners/${x.id}/audio`, fd); toast("Banner audio saved"); marketing(el); return true; } catch (e) { toast(e.message, "err"); return false; }
           } }] });
     }));
     el.querySelectorAll("[data-bv]").forEach((bt) => (bt.onclick = () => {
