@@ -42,7 +42,7 @@
 
   const APPROVAL = { pending: ["Waiting for approval", "warn"], approved: ["Live in store", "ok"], rejected: ["Not approved", "bad"] };
 
-  const TABS = [["overview", "Overview"], ["orders", "Orders"], ["products", "Products"], ["earnings", "Earnings"], ["returns", "Returns"], ["reports", "Reports"]];
+  const TABS = [["overview", "Overview"], ["orders", "Orders"], ["products", "Products"], ["earnings", "Earnings"], ["returns", "Returns"], ["shop", "My shop page"], ["reports", "Reports"]];
   const tab = () => { const t = location.hash.replace(/^#\/?/, "").split("?")[0]; return TABS.some((x) => x[0] === t) ? t : "overview"; };
 
   function home() {
@@ -60,7 +60,7 @@
     if (!body) return;
     document.querySelectorAll("#vtabs a").forEach((a) => a.classList.toggle("on", a.dataset.t === t));
     body.innerHTML = `<div class="page-loading"><span class="spin lg"></span></div>`;
-    try { await ({ overview, orders: () => orders(body, "to_ship"), products, earnings, returns: () => orders(body, "returns", true), reports })[t](body); }
+    try { await ({ overview, orders: () => orders(body, "to_ship"), products, earnings, returns: () => orders(body, "returns", true), shop, reports })[t](body); }
     catch (e) { if (e.status === 401) { location.reload(); return; } body.innerHTML = `<div class="empty"><h3>Couldn't load this page</h3><p>${esc(e.message)}</p></div>`; }
   }
 
@@ -107,6 +107,23 @@
       <div class="vhelp">💡 <b>How it works:</b> when an order is delivered, you earn the sale amount minus the store's commission. The money becomes “Ready to be paid” after the ${S.window_days}-day return period. If an order is returned, it is taken off. ${S.clawback ? `<br><b>${fmt.inr(S.clawback)}</b> will be taken off your next payment because of returns after you were paid.` : ""}</div>
       <div class="vcardbox"><h3>Payments you received</h3>${d.payouts.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Date</th><th class="num">Amount</th><th>How</th><th>Reference</th></tr></thead><tbody>${d.payouts.map((p) => `<tr><td>${fmt.date(p.created_at)}</td><td class="num"><b>${fmt.inr(p.amount)}</b></td><td>${esc((p.method || "").toUpperCase())}</td><td class="muted">${esc(p.reference || "")}</td></tr>`).join("")}</tbody></table></div>` : '<p class="muted">No payment yet.</p>'}</div>
       <div class="vcardbox"><h3>Every sale</h3>${d.rows.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Order</th><th>Product</th><th class="num">Sale</th><th class="num">Commission</th><th class="num">You earn</th><th>Status</th></tr></thead><tbody>${d.rows.map((r) => `<tr><td>${esc(r.order_no)}</td><td>${esc(r.name)} × ${r.qty}</td><td class="num">${fmt.inr(r.gross)}</td><td class="num">${fmt.inr(r.commission)} <span class="muted">(${r.commission_pct}%)</span></td><td class="num"><b>${fmt.inr(r.net)}</b></td><td><span class="pill ${r.state === "payable" || r.label === "Paid" ? "ok" : r.state === "reversed" ? "bad" : "warn"}">${esc(r.label)}</span></td></tr>`).join("")}</tbody></table></div>` : '<p class="muted">Earnings appear here after your first delivered order.</p>'}</div>`;
+  }
+
+  async function shop(el) {
+    const d = await api("GET", "/api/vendor/shop");
+    const link = `${location.origin}/#/vendor/${d.id}`;
+    el.innerHTML = `<h2 class="vh">My shop page</h2><div class="vcardbox"><p class="muted">Customers can open a page with your name, picture and all your live products. Share this link with them:</p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px"><input class="inp" readonly value="${esc(link)}" style="flex:1;min-width:220px"><button class="btn btn-sm" id="cp">Copy link</button><a class="btn btn-sm" href="${esc(link)}" target="_blank" rel="noopener">View my shop ↗</a></div>
+      <div style="display:flex;gap:14px;align-items:center;margin-bottom:12px">${d.logo ? `<img src="${esc(d.logo)}" alt="" style="width:72px;height:72px;border-radius:50%;object-fit:cover">` : `<div class="noimg" style="width:72px;height:72px;border-radius:50%">No picture</div>`}
+        <label class="fld" style="margin:0;flex:1"><span>Shop picture / logo (JPG, PNG or WEBP, up to 5 MB)</span><input type="file" id="lg" accept="image/*"></label><button class="btn btn-sm" id="lgu">Upload</button></div>
+      <label class="fld"><span>About your shop (shown to customers)</span><textarea id="ab" rows="4" maxlength="600">${esc(d.about)}</textarea></label><button class="btn btn-primary" id="abs">Save</button></div>`;
+    el.querySelector("#cp").onclick = () => { navigator.clipboard?.writeText(link); toast("Link copied"); };
+    el.querySelector("#abs").onclick = async () => { try { await api("PUT", "/api/vendor/shop", { about: el.querySelector("#ab").value }); toast("Saved"); } catch (e) { toast(e.message, "err"); } };
+    el.querySelector("#lgu").onclick = async () => {
+      const f = el.querySelector("#lg").files[0]; if (!f) { toast("Choose a picture first", "err"); return; }
+      const fd = new FormData(); fd.append("file", f);
+      try { await api("POST", "/api/vendor/shop/logo", fd); toast("Picture saved"); shop(el); } catch (e) { toast(e.message, "err"); }
+    };
   }
 
   async function reports(el) {
