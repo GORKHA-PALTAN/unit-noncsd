@@ -997,10 +997,14 @@
   // ------------------------------------------------------------------ MARKETING
   // ------------------------------------------------------------------ vendors
   async function vendors(el) {
-    const [vd, pp] = await Promise.all([api("GET", "/api/admin/vendors"), api("GET", "/api/admin/vendor-products?approval=pending")]);
+    const [vd, pp, ap] = await Promise.all([api("GET", "/api/admin/vendors"), api("GET", "/api/admin/vendor-products?approval=pending"), api("GET", "/api/admin/vendor-applications")]);
+    const pendingApps = ap.items.filter((x) => x.status === "pending");
     const field = (id, label, val = "", type = "text", extra = "") => `<label class="fld"><span>${label}</span><input id="${id}" type="${type}" value="${esc(val)}" ${extra}></label>`;
     el.innerHTML = `<div class="cards">
-      <div class="card c12"><h2>Vendor sign-in page</h2><div class="sub">Give your vendors this link and the email and password you create for them:</div>
+      ${pendingApps.length ? `<div class="card c12" style="border:2px solid #ffb74d"><h2>New vendor applications <span class="pill bad">${pendingApps.length}</span></h2><div class="sub">People who applied at <b>${esc(location.origin)}/#/sell</b>. Approving creates their vendor login with the password they chose.</div>
+        ${pendingApps.map((x) => `<div style="border-top:1px solid var(--line);padding:12px 0"><b>${esc(x.business_name)}</b> · ${esc(x.contact_name)} · ${esc(x.phone || "")} · ${esc(x.email)}${x.gst_no ? ` · GST ${esc(x.gst_no)}` : ""}<div class="muted">${esc(x.address || "")}</div><div style="margin:4px 0 8px">${esc(x.about || "")}</div>
+          <div style="display:flex;gap:6px"><button class="btn btn-primary btn-sm" data-aa="${x.id}">Approve</button><button class="btn btn-sm" data-ar="${x.id}" style="color:#c62828">Reject</button></div></div>`).join("")}</div>` : ""}
+      <div class="card c12"><h2>Vendor sign-in page</h2><div class="sub">Give this link to vendors you add yourself. New sellers can also apply at <b>${esc(location.origin)}/#/sell</b>.</div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><input class="inp" id="vl" readonly value="${esc(location.origin)}/vendor" style="flex:1;min-width:240px"><button class="btn btn-sm" id="vlc">Copy link</button></div></div>
       <div class="card c12"><div class="card-h"><div><h2>Products waiting for your approval ${pp.items.length ? `<span class="pill bad">${pp.items.length}</span>` : ""}</h2><div class="sub">Vendor products stay hidden from customers until you approve them.</div></div></div>
         <div class="tbl-wrap"><table class="tbl"><thead><tr><th></th><th>Product</th><th>Vendor</th><th class="num">Price</th><th class="num">Stock</th><th></th></tr></thead><tbody>
@@ -1048,6 +1052,16 @@
       if (ok) vendors(el);
     };
     el.querySelectorAll("[data-vp]").forEach((b) => (b.onclick = () => payDlg(b.dataset.vp)));
+    el.querySelectorAll("[data-aa]").forEach((b) => (b.onclick = async () => {
+      const pct = await promptDialog("Approve vendor", "Commission % you keep from their sales", { confirmLabel: "Approve", placeholder: "10" });
+      if (pct === null || pct === undefined) return;
+      try { await api("POST", `/api/admin/vendor-applications/${b.dataset.aa}/approve`, { commission_pct: pct || 10 }); toast("Vendor approved — they can sign in now"); vendors(el); } catch (e) { toast(e.message, "err"); }
+    }));
+    el.querySelectorAll("[data-ar]").forEach((b) => (b.onclick = async () => {
+      const note = await promptDialog("Reject application", "Reason (only you will see this)", { confirmLabel: "Reject", required: false, textarea: true });
+      if (note === null || note === undefined) return;
+      try { await api("POST", `/api/admin/vendor-applications/${b.dataset.ar}/reject`, { note: String(note) }); toast("Application rejected"); vendors(el); } catch (e) { toast(e.message, "err"); }
+    }));
     el.querySelector("#vadd").onclick = () => vdlg();
     el.querySelectorAll("[data-ve]").forEach((b) => (b.onclick = () => vdlg(vd.items.find((v) => v.id == b.dataset.ve))));
     el.querySelectorAll("[data-ap]").forEach((b) => (b.onclick = async () => { try { await api("POST", `/api/admin/vendor-products/${b.dataset.ap}/review`, { decision: "approve" }); toast("Approved — now live in your store"); vendors(el); } catch (e) { toast(e.message, "err"); } }));
