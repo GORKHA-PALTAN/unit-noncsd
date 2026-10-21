@@ -433,6 +433,7 @@
     const load = async () => {
       const d = await api("GET", "/api/admin/returns?status=" + status);
       el.innerHTML = `<div class="toolbar"><div class="seg">${["pending", "approved", "rejected", "all"].map((s) => `<button data-s="${s}" class="${s === status ? "on" : ""}">${s[0].toUpperCase() + s.slice(1)}</button>`).join("")}</div></div>
+        <div id="ir"></div>
         <div class="card" style="margin-bottom:14px"><h2>Cancellation & return requests</h2><div class="sub">Approving a return moves the order to “Return in progress”; mark it Returned from the order page when the item arrives.</div>
         ${d.requests.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Order</th><th>Customer</th><th>Type</th><th>Reason</th><th>Requested</th><th>Order status</th><th class="num">Value</th><th></th></tr></thead><tbody>
           ${d.requests.map((r) => `<tr><td><a href="#/orders/${r.order_id}" style="color:var(--teal);font-weight:600">${esc(r.order_no)}</a></td><td>${esc(r.customer)}</td><td>${r.kind === "cancel" ? '<span class="pill warn">Cancellation</span>' : '<span class="pill info">Return</span>'}</td>
@@ -442,6 +443,24 @@
         ${d.refunds.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Order</th><th>Customer</th><th>Method</th><th>Status</th><th>Reference</th><th>Created</th><th class="num">Amount</th></tr></thead><tbody>
           ${d.refunds.slice(0, 100).map((f) => `<tr class="click" data-href="#/orders/${f.order_id}"><td><b>${esc(f.order_no)}</b></td><td>${esc(f.customer)}</td><td>${esc(PM[f.method] || f.method || "")}</td><td>${f.status === "completed" ? '<span class="pill ok">Completed</span>' : '<span class="pill warn">Processing</span>'}</td><td class="muted">${esc(f.reference || "—")}</td><td>${fmt.datetime(f.created_at)}</td><td class="num">${fmt.inr(f.amount)}</td></tr>`).join("")}</tbody></table></div>` : `<div class="empty-sm">No refunds yet.</div>`}</div>`;
       el.querySelectorAll("[data-s]").forEach((b) => (b.onclick = () => { status = b.dataset.s; load(); }));
+      try {
+        const ir = (await api("GET", "/api/admin/item-returns?status=" + (status === "all" ? "all" : "open"))).items;
+        const act = (r) => r.status === "requested" ? `<button class="btn btn-sm btn-primary" data-ia="${r.id}">Approve</button><button class="btn btn-sm" data-ir="${r.id}">Reject</button>`
+          : r.status === "approved" ? `<button class="btn btn-sm btn-primary" data-ic="${r.id}">Item received</button>`
+          : r.status === "received" ? `<button class="btn btn-sm btn-primary" data-if="${r.id}">Mark refunded</button>` : "";
+        el.querySelector("#ir").innerHTML = `<div class="card" style="margin-bottom:14px"><h2>Item returns (part of an order)</h2><div class="sub">Steps: Approve → Item received (stock goes back) → Mark refunded (after you send the money). The vendor's earnings are adjusted automatically.</div>
+          ${ir.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Order</th><th>Item</th><th>Vendor</th><th>Customer</th><th>Reason</th><th>Status</th><th class="num">Refund</th><th></th></tr></thead><tbody>
+          ${ir.map((r) => `<tr><td><a href="#/orders/${r.order_id}" style="color:var(--teal);font-weight:600">${esc(r.order_no)}</a></td><td>${esc(r.name)} × ${r.qty}</td><td>${esc(r.vendor || "Own product")}</td><td>${esc(r.customer)}</td><td>${esc(r.reason || "")}</td><td><span class="pill info">${esc(r.label)}</span></td><td class="num">${fmt.inr(r.amount)}</td><td><div style="display:flex;gap:6px">${act(r)}</div></td></tr>`).join("")}</tbody></table></div>` : `<div class="empty-sm">No item returns waiting.</div>`}</div>`;
+        const post = async (id, what, body, msg) => { try { await api("POST", `/api/admin/item-returns/${id}/${what}`, body); toast(msg); load(); badges(); } catch (e) { toast(e.message, "err"); } };
+        el.querySelectorAll("[data-ia]").forEach((b) => (b.onclick = () => post(b.dataset.ia, "decide", { action: "approve" }, "Approved")));
+        el.querySelectorAll("[data-ir]").forEach((b) => (b.onclick = async () => { const note = await promptDialog("Reject item return", "Reason (shown to the customer)", { confirmLabel: "Reject" }); if (note !== null) post(b.dataset.ir, "decide", { action: "reject", note }, "Rejected"); }));
+        el.querySelectorAll("[data-ic]").forEach((b) => (b.onclick = async () => {
+          const ok = await modal({ title: "Item received", body: `<p>Is the item in good condition to sell again?</p><label class="fld"><span>Put it back in stock?</span><select id="rs"><option value="1">Yes — add back to stock</option><option value="0">No — damaged, do not restock</option></select></label>`,
+            actions: [{ label: "Cancel", cls: "btn-ghost" }, { label: "Confirm", cls: "btn-primary", handler: (m) => api("POST", `/api/admin/item-returns/${b.dataset.ic}/receive`, { restock: m.querySelector("#rs").value === "1" }) }] });
+          if (ok) { toast("Marked received"); load(); }
+        }));
+        el.querySelectorAll("[data-if]").forEach((b) => (b.onclick = async () => { const ref = await promptDialog("Mark refunded", "UPI / bank reference of the refund (optional)", { confirmLabel: "Mark refunded", required: false }); if (ref !== null) post(b.dataset.if, "refund", { reference: ref }, "Refund recorded"); }));
+      } catch (e) { el.querySelector("#ir").innerHTML = ""; }
       el.querySelectorAll("[data-ap]").forEach((b) => (b.onclick = async () => {
         const isRet = b.dataset.k === "return";
         const ok = await modal({ title: isRet ? "Approve return" : "Approve cancellation",
@@ -1000,7 +1019,18 @@
     const [vd, pp, ap] = await Promise.all([api("GET", "/api/admin/vendors"), api("GET", "/api/admin/vendor-products?approval=pending"), api("GET", "/api/admin/vendor-applications")]);
     const pendingApps = ap.items.filter((x) => x.status === "pending");
     const field = (id, label, val = "", type = "text", extra = "") => `<label class="fld"><span>${label}</span><input id="${id}" type="${type}" value="${esc(val)}" ${extra}></label>`;
+    const ms = await api("GET", "/api/admin/marketplace-summary");
+    const T = ms.totals;
     el.innerHTML = `<div class="cards">
+      <div class="card c12"><h2>Marketplace summary</h2><div class="sub">Delivered orders from vendors, after returns. “You owe vendors” is money from customers that belongs to vendors.</div>
+        <div class="cards" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:10px">
+          <div class="card"><div class="sub">Vendor sales</div><h2>${fmt.inr(T.sales)}</h2></div>
+          <div class="card"><div class="sub">Your commission</div><h2>${fmt.inr(T.commission)}</h2></div>
+          <div class="card" style="${T.owed_now > 0 ? "border:2px solid #ffb74d" : ""}"><div class="sub">You owe vendors now</div><h2>${fmt.inr(T.owed_now)}</h2></div>
+          <div class="card"><div class="sub">Still clearing / on hold</div><h2>${fmt.inr(T.clearing + T.hold)}</h2></div>
+          <div class="card"><div class="sub">Already paid out</div><h2>${fmt.inr(T.paid)}</h2></div>
+          <div class="card"><div class="sub">Refunded for returns</div><h2>${fmt.inr(T.returns)}</h2></div></div>
+        ${ms.vendors.length ? `<div class="tbl-wrap" style="margin-top:12px"><table class="tbl"><thead><tr><th>Vendor</th><th class="num">Sales</th><th class="num">Your commission</th><th class="num">Owed now</th><th class="num">Paid</th></tr></thead><tbody>${ms.vendors.map((x) => `<tr><td>${esc(x.name)}</td><td class="num">${fmt.inr(x.sales)}</td><td class="num">${fmt.inr(x.commission)}</td><td class="num"><b>${fmt.inr(x.owed_now)}</b></td><td class="num">${fmt.inr(x.paid)}</td></tr>`).join("")}</tbody></table></div>` : ""}</div>
       ${pendingApps.length ? `<div class="card c12" style="border:2px solid #ffb74d"><h2>New vendor applications <span class="pill bad">${pendingApps.length}</span></h2><div class="sub">People who applied at <b>${esc(location.origin)}/#/sell</b>. Approving creates their vendor login with the password they chose.</div>
         ${pendingApps.map((x) => `<div style="border-top:1px solid var(--line);padding:12px 0"><b>${esc(x.business_name)}</b> · ${esc(x.contact_name)} · ${esc(x.phone || "")} · ${esc(x.email)}${x.gst_no ? ` · GST ${esc(x.gst_no)}` : ""}<div class="muted">${esc(x.address || "")}</div><div style="margin:4px 0 8px">${esc(x.about || "")}</div>
           <div style="display:flex;gap:6px"><button class="btn btn-primary btn-sm" data-aa="${x.id}">Approve</button><button class="btn btn-sm" data-ar="${x.id}" style="color:#c62828">Reject</button></div></div>`).join("")}</div>` : ""}
