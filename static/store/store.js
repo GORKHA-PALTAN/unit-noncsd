@@ -770,10 +770,12 @@
         ${o.actions.can_pay ? `<button class="btn btn-primary btn-block" id="o-pay" style="margin-top:12px">${o.payment_method === "upi" ? "Pay with UPI / enter transaction ID" : "Complete payment"}</button>` : ""}
       </div>
       <div class="box" style="margin-bottom:14px"><h2>Delivery address</h2><div style="font-size:15px"><b>${esc(o.ship_name)}</b><br>${esc(addr.line1)}${addr.line2 ? ", " + esc(addr.line2) : ""}<br>${esc(addr.city)}, ${esc(addr.state)} ${esc(addr.pincode)}<br>${esc(o.ship_phone)}</div></div>
+      ${(o.item_returns || []).length ? `<div class="box" style="margin-bottom:14px"><h2>Item returns</h2>${o.item_returns.map((r) => `<div style="font-size:14px;margin-bottom:6px">${esc(r.name)} × ${r.qty}: <b>${{ requested: "Waiting for the store", approved: "Approved — the store will contact you", received: "Item received — refund in progress", refunded: "Refunded ₹" + r.amount, rejected: "Not approved" }[r.status] || esc(r.status)}</b>${r.note ? " — " + esc(r.note) : ""}</div>`).join("")}</div>` : ""}
       ${o.requests.length ? `<div class="box" style="margin-bottom:14px"><h2>Requests</h2>${o.requests.map((r) => `<div style="font-size:14px;margin-bottom:6px">${r.kind === "cancel" ? "Cancellation" : "Return"}: <b>${esc(r.status)}</b>${r.resolution_note ? " — " + esc(r.resolution_note) : ""}</div>`).join("")}</div>` : ""}
       <div style="display:flex;gap:10px;flex-wrap:wrap">
         ${o.actions.can_cancel ? `<button class="btn" id="o-cancel" style="color:#c62828">${o.actions.cancel_needs_approval ? "Request cancellation" : "Cancel order"}</button>` : ""}
-        ${o.actions.can_return ? `<button class="btn" id="o-return">Request return</button>` : ""}
+        ${o.actions.can_return ? `<button class="btn" id="o-return">Return whole order</button>` : ""}
+        ${o.actions.can_return_items ? `<button class="btn" id="o-ritems">Return some items</button>` : ""}
         <a class="btn btn-ghost" href="#/orders">All orders</a></div>
       </div></div></div>`;
     const pay = document.getElementById("o-pay");
@@ -791,6 +793,14 @@
       if (!reason) return;
       try { await api("POST", `/api/orders/${o.order_no}/cancel`, { reason }); toast(o.actions.cancel_needs_approval ? "Cancellation requested" : "Order cancelled"); route(); } catch (e) { toast(e.message, "err"); }
     };
+    const ri = document.getElementById("o-ritems");
+    if (ri) ri.onclick = () => modal({ title: "Return some items", wide: false,
+      body: `<p class="muted" style="margin-top:0">Choose how many of each item you want to return.</p>${o.items.filter((i) => i.returnable > 0).map((i) => `<label class="fld" style="display:flex;align-items:center;gap:10px;justify-content:space-between"><span>${esc(i.name)}<br><small class="muted">${fmt.inr(i.unit_price)} each · up to ${i.returnable}</small></span><input type="number" min="0" max="${i.returnable}" value="0" data-ri="${i.id}" style="width:80px"></label>`).join("")}<label class="fld"><span>Reason</span><textarea id="ri-reason" rows="3" maxlength="300" placeholder="e.g. Damaged, wrong size"></textarea></label>`,
+      actions: [{ label: "Cancel", cls: "btn-ghost" }, { label: "Send return request", cls: "btn-primary", handler: async (m) => {
+        const items = [...m.querySelectorAll("[data-ri]")].map((x) => ({ item_id: +x.dataset.ri, qty: +x.value || 0 })).filter((x) => x.qty > 0);
+        if (!items.length) { toast("Choose at least one item", "err"); return false; }
+        try { await api("POST", `/api/orders/${o.order_no}/item-returns`, { items, reason: m.querySelector("#ri-reason").value }); toast("Return requested"); route(); return true; } catch (e) { toast(e.message, "err"); return false; }
+      } }] });
     const rt = document.getElementById("o-return");
     if (rt) rt.onclick = async () => {
       const reason = await promptDialog("Request return", "Why are you returning this order?", { confirmLabel: "Request return", textarea: true, placeholder: "e.g. Wrong size, damaged item" });
