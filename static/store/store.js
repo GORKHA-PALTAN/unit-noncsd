@@ -133,6 +133,7 @@
 
   async function route() {
     clearInterval(S.heroTimer);
+    (S.heroAudios || []).forEach((a) => a.pause());
     const { parts, q } = parseHash();
     const r = parts[0] || "";
     document.querySelectorAll(".bottom-nav a").forEach((a) => a.classList.toggle("on", a.dataset.nav === ({ "": "home", wishlist: "wishlist", categories: "categories", orders: "orders", order: "orders", account: "account", notifications: "account" }[r] || "")));
@@ -250,6 +251,8 @@
         <div class="hero-track" id="hero-track">${banners.map((b, i) => `
           <div class="hero-slide th-${esc(b.theme || "navy")}${b.video_url ? " has-video" : ""}" role="group" aria-label="${i + 1} of ${banners.length}">
             ${b.video_url ? `<video class="hero-video" src="${esc(b.video_url)}" ${b.image_url ? `poster="${esc(b.image_url)}"` : ""} muted loop playsinline preload="metadata" ${i === 0 ? "autoplay" : ""}></video>` : ""}
+            ${b.audio_url ? `<audio class="hero-audio" src="${esc(b.audio_url)}" loop preload="none"></audio>` : ""}
+            ${b.video_url || b.audio_url ? `<button type="button" class="hero-snd" aria-label="Sound on or off">🔇</button>` : ""}
             <div class="hero-txt"><h2>${esc(b.title)}</h2>${b.subtitle ? `<p>${esc(b.subtitle)}</p>` : ""}${b.cta ? `<a class="btn" href="${esc(b.link || "#/search")}">${esc(b.cta)}</a>` : ""}</div>
             <div class="hero-art">${b.video_url ? "" : b.image_url || heroImgs[i] ? `<img src="${esc(b.image_url || heroImgs[i])}" alt="">` : ""}</div></div>`).join("")}</div>
         ${banners.length > 1 ? `<div class="dots" id="hero-dots">${banners.map((_, i) => `<button aria-label="Slide ${i + 1}" class="${i ? "" : "on"}"></button>`).join("")}</div>` : ""}
@@ -267,6 +270,17 @@
       <section class="sec"><div class="sec-h"><h2>Popular categories</h2></div>
         <div class="subcat-row">${h.popular_categories.map((c) => `<a href="#/c/${c.slug}">${esc(c.name)} · ${c.count}</a>`).join("")}</div></section>`;
     bindCards(main);
+    const slidesEl = [...document.querySelectorAll(".hero-slide")];
+    let sound = false, cur = 0;
+    S.heroAudios = [...document.querySelectorAll(".hero-audio")];
+    const applySound = () => slidesEl.forEach((sl, k) => {
+      const v = sl.querySelector(".hero-video"), a = sl.querySelector(".hero-audio"), bt = sl.querySelector(".hero-snd");
+      const on = sound && k === cur;
+      if (v) v.muted = !(on && !a);
+      if (a) { if (on) a.play().catch(() => {}); else a.pause(); }
+      if (bt) bt.textContent = sound ? "🔊" : "🔇";
+    });
+    slidesEl.forEach((sl) => { const bt = sl.querySelector(".hero-snd"); if (bt) bt.onclick = () => { sound = !sound; applySound(); }; });
     const vids = [...document.querySelectorAll(".hero-video")];
     const playOnly = (n) => vids.forEach((v) => { const on = v.closest(".hero-slide") === document.querySelectorAll(".hero-slide")[n]; if (on) { v.play().catch(() => {}); } else { v.pause(); } });
     vids.forEach((v) => { v.muted = true; });
@@ -275,7 +289,7 @@
       let i = 0;
       const track = document.getElementById("hero-track");
       const dots = [...document.querySelectorAll("#hero-dots button")];
-      const go = (n) => { i = (n + banners.length) % banners.length; track.style.transform = `translateX(-${i * 100}%)`; playOnly(i); dots.forEach((d, k) => d.classList.toggle("on", k === i)); };
+      const go = (n) => { i = (n + banners.length) % banners.length; track.style.transform = `translateX(-${i * 100}%)`; cur = i; playOnly(i); applySound(); dots.forEach((d, k) => d.classList.toggle("on", k === i)); };
       dots.forEach((d, k) => (d.onclick = () => { go(k); clearInterval(S.heroTimer); }));
       let sx = null;
       track.addEventListener("touchstart", (e) => (sx = e.touches[0].clientX), { passive: true });
@@ -374,6 +388,7 @@
       <div>
         <div style="font-size:14px;color:var(--ink-3)"><a href="#/">Home</a> › ${p.category ? `<a href="#/c/${p.category.slug}">${esc(p.category.name)}</a>` : ""}${p.subcategory ? ` › <a href="#/c/${p.subcategory.slug}">${esc(p.subcategory.name)}</a>` : ""}</div>
         <div class="pc-brand" style="margin-top:10px">${esc(p.brand || "")}</div>
+        ${p.sold_by ? `<div class="muted" style="font-size:14px;margin-top:2px">Sold by <b>${esc(p.sold_by)}</b></div>` : ""}
         <h1>${esc(p.name)}</h1>
         ${p.reviews_count ? `<div class="pc-meta"><span class="rate">${p.rating} ★</span> ${fmt.num(p.reviews_count)} ratings</div>` : `<div class="pc-meta">No ratings yet</div>`}
         <div class="price" style="margin-top:10px"><b>${fmt.inr(p.price)}</b>${p.mrp && p.mrp > p.price ? `<s>MRP ${fmt.inr(p.mrp)}</s><span class="off">${p.discount}% off</span>` : ""}</div>

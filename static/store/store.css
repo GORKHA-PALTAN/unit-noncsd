@@ -5,6 +5,7 @@ body { padding-bottom: calc(72px + env(safe-area-inset-bottom)); background: #ff
 .top { position: sticky; top: 0; z-index: 50; background: #fff; }
 .top-row { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 8px; height: 64px; padding: 0 8px; max-width: 1240px; margin: 0 auto; }
 .brand { display: flex; align-items: center; gap: 8px; justify-self: center; }
+.brand-tri { width: 26px; height: 26px; flex: none; }
 .brand-txt { display: flex; flex-direction: column; line-height: 1; }
 .brand-txt b { font-size: 18px; letter-spacing: -.01em; color: var(--navy); }
 .brand-txt small { font-size: 10px; letter-spacing: .22em; font-weight: 700; color: var(--teal); margin-top: 3px; }
@@ -65,6 +66,7 @@ body { padding-bottom: calc(72px + env(safe-area-inset-bottom)); background: #ff
 .hero-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: 0; }
 .hero-slide.has-video::before { content: ""; position: absolute; inset: 0; z-index: 1; background: linear-gradient(90deg, rgba(0,0,0,.62), rgba(0,0,0,.15)); }
 .hero-slide .hero-txt { position: relative; z-index: 2; }
+.hero-snd { position: absolute; right: 12px; bottom: 12px; z-index: 3; width: 40px; height: 40px; border-radius: 50%; border: 0; background: rgba(0,0,0,.55); color: #fff; font-size: 18px; cursor: pointer; }
 .th-navy { background: linear-gradient(120deg, #2b3047, #3f4870); } .th-teal { background: linear-gradient(120deg, #156b6b, #1f8a8a); }
 .th-coral { background: linear-gradient(120deg, #c2412d, #ef6c57); } .th-gold { background: linear-gradient(120deg, #8a5a00, #c98500); }
 .th-plum { background: linear-gradient(120deg, #5b2a6e, #8e44ad); } .th-slate { background: linear-gradient(120deg, #37474f, #607d8b); }
