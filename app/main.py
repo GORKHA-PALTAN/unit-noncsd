@@ -17,7 +17,7 @@ from .schema import create_schema
 from .web import ROUTES, ApiError
 
 # importing registers the routes
-from .routes import auth, store, admin, vendor  # noqa: F401,E402
+from .routes import auth, store, admin, vendor, item_returns  # noqa: F401,E402
 
 
 CSP = ("default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com/gsi/style; "

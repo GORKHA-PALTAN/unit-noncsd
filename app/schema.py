@@ -91,6 +91,19 @@ CREATE TABLE IF NOT EXISTS vendor_applications (
   created_at TEXT NOT NULL, decided_at TEXT
 );
 
+CREATE TABLE IF NOT EXISTS item_returns (
+  id {PK}, order_id INTEGER NOT NULL, order_item_id INTEGER NOT NULL, product_id INTEGER, user_id INTEGER NOT NULL, qty INTEGER NOT NULL,
+  amount {REAL} NOT NULL, reason TEXT, status TEXT NOT NULL DEFAULT 'requested', note TEXT, restock INTEGER DEFAULT 1, reference TEXT,
+  created_at TEXT NOT NULL, decided_at TEXT, received_at TEXT, refunded_at TEXT
+);
+CREATE INDEX IF NOT EXISTS ix_itret_order ON item_returns(order_id);
+
+CREATE TABLE IF NOT EXISTS vendor_adjustments (
+  id {PK}, vendor_id INTEGER NOT NULL, order_item_id INTEGER NOT NULL, return_id INTEGER, gross {REAL} NOT NULL, commission {REAL} NOT NULL,
+  net {REAL} NOT NULL, claw_payout_id INTEGER, created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_vadj_vendor ON vendor_adjustments(vendor_id);
+
 CREATE TABLE IF NOT EXISTS banner_audios (
   banner_id INTEGER PRIMARY KEY, url TEXT NOT NULL, updated_at TEXT NOT NULL
 );
