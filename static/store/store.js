@@ -57,7 +57,7 @@
       <div><h4>Shop</h4>${S.meta.categories.slice(0, 6).map((c) => `<a href="#/c/${c.slug}">${esc(c.name)}</a>`).join("")}</div>
       <div><h4>My account</h4><a href="#/orders">Orders & tracking</a><a href="#/wishlist">Wishlist</a><a href="#/cart">Cart</a><a href="#/account">Profile & addresses</a></div>
       <div><h4>Policies</h4><a href="#/policy/returns">Returns & refunds</a><a href="#/policy/shipping">Shipping</a><a href="#/policy/privacy">Privacy</a></div>
-      <div><h4>Customer support</h4><a href="mailto:${esc(st.support_email)}">${esc(st.support_email)}</a><a href="tel:${esc(st.support_phone.replace(/\s/g, ""))}">${esc(st.support_phone)}</a><a href="/admin">Staff sign-in</a></div></div>
+      <div><h4>Customer support</h4><a href="mailto:${esc(st.support_email)}">${esc(st.support_email)}</a><a href="tel:${esc(st.support_phone.replace(/\s/g, ""))}">${esc(st.support_phone)}</a><a href="#/sell">Sell on our store</a><a href="/admin">Staff sign-in</a></div></div>
       <div class="fine">© ${new Date().getFullYear()} ${esc(st.store_name)}. Products marked SAMPLE are demonstration data and are not real inventory.</div>
       <div class="fine foot-credit">Created &amp; managed by <b>Surjeet Choudhary</b></div>`;
   }
@@ -147,6 +147,7 @@
       else if (r === "search") await pageList({}, q);
       else if (r === "p") await pageProduct(parts[1]);
       else if (r === "vendor") await pageShop(parts[1]);
+      else if (r === "sell") pageSell();
       else if (r === "categories") pageCategories();
       else if (r === "cart") await needLogin(pageCart);
       else if (r === "checkout") await needLogin(pageCheckout);
@@ -306,6 +307,32 @@
       <h2 style="font-size:18px;margin:18px 0 10px;color:var(--teal)">${esc(d)}</h2>
       <div class="tile-grid" style="grid-template-columns:repeat(auto-fill,minmax(104px,1fr))">${S.meta.categories.filter((c) => c.department === d).map((c) => `
         <a class="tile" href="#/c/${c.slug}"><div class="t-img">${c.image ? `<img src="${esc(c.image)}" alt="" loading="lazy">` : ICON[c.icon] || ""}</div>${esc(c.name)}</a>`).join("")}</div>`).join("")}</div>`;
+  }
+
+  function pageSell() {
+    document.getElementById("dept-tabs").hidden = true;
+    main.innerHTML = `<div class="page" style="max-width:560px"><h1>Sell on ${esc(S.meta.store.store_name)}</h1>
+      <p class="muted">Fill in this form to become a vendor. The store owner will check your details. If approved, you can sign in at <b>/vendor</b> with the email and password you choose here, add your products and see your sales.</p>
+      <form id="sellf" novalidate>
+        <label class="fld"><span>Business / shop name</span><input name="business_name" maxlength="100" required></label>
+        <label class="fld"><span>Your name</span><input name="contact_name" maxlength="80" required></label>
+        <div class="row2"><label class="fld"><span>Phone</span><input name="phone" type="tel" maxlength="16" required></label><label class="fld"><span>Email (your login)</span><input name="email" type="email" maxlength="120" required autocomplete="email"></label></div>
+        <label class="fld"><span>Choose a password</span><input name="password" type="password" autocomplete="new-password" required><small class="muted">At least 8 characters with letters and numbers.</small></label>
+        <label class="fld"><span>Address</span><input name="address" maxlength="300"></label>
+        <label class="fld"><span>GST number (if you have one)</span><input name="gst_no" maxlength="20"></label>
+        <label class="fld"><span>What do you sell?</span><textarea name="about" rows="4" maxlength="600" required></textarea></label>
+        <input name="website" tabindex="-1" autocomplete="off" style="position:absolute;left:-9999px" aria-hidden="true">
+        <div class="issue" id="sell-err" role="alert" hidden></div>
+        <button class="btn btn-primary btn-block" style="min-height:48px">Send application</button></form></div>`;
+    document.getElementById("sellf").onsubmit = async (e) => {
+      e.preventDefault();
+      const err = document.getElementById("sell-err"); err.hidden = true;
+      const b = e.target.querySelector("button.btn-primary"); b.disabled = true;
+      try {
+        await api("POST", "/api/vendor-apply", NC.formData(e.target));
+        main.innerHTML = `<div class="page" style="max-width:560px;text-align:center"><div style="font-size:48px">✅</div><h1>Application sent</h1><p>Thank you! The store owner will check your details and contact you on the phone number you gave. After approval, sign in at <b>/vendor</b> with your email and password.</p><a class="btn btn-primary" href="#/">Back to store</a></div>`;
+      } catch (ex) { err.textContent = ex.message; err.hidden = false; b.disabled = false; }
+    };
   }
 
   async function pageShop(id) {
