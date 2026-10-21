@@ -4,6 +4,7 @@ Safety rule: a product with no row in product_vendors belongs to the shop owner 
 Vendor products stay hidden from the store (status 'draft') until the owner approves them.
 """
 import csv
+import re
 import io
 from datetime import date, timedelta
 
@@ -337,7 +338,11 @@ def ledger(db, vendor_id):
                   "JOIN orders o ON o.id=e.order_id JOIN order_items i ON i.id=e.order_item_id WHERE e.vendor_id=? ORDER BY e.created_at DESC, e.order_item_id DESC",
                   (vendor_id,))
     sums = {"payable": 0.0, "clearing": 0.0, "hold": 0.0, "paid": 0.0, "clawback": 0.0, "commission": 0.0, "gross": 0.0}
+    netted = {}  # item returns refunded BEFORE the earning was paid: simply reduce that earning
+    for a in db.all("SELECT order_item_id, SUM(net) AS n FROM vendor_adjustments WHERE vendor_id=? AND claw_payout_id=-1 GROUP BY order_item_id", (vendor_id,)):
+        netted[a["order_item_id"]] = a["n"]
     for r in rows:
+        r["net"] = money(r["net"] - netted.get(r["order_item_id"], 0))
         s = _earn_state(r, window)
         r["state"] = s
         if r["payout_id"]:
@@ -354,9 +359,16 @@ def ledger(db, vendor_id):
         if s != "reversed":
             sums["commission"] += r["commission"]
             sums["gross"] += r["gross"]
+    adjs = db.all("SELECT a.*, o.order_no, i.name FROM vendor_adjustments a JOIN order_items i ON i.id=a.order_item_id JOIN orders o ON o.id=i.order_id "
+                  "WHERE a.vendor_id=? ORDER BY a.id DESC", (vendor_id,))
+    sums["returns_pending"] = sum(a["net"] for a in adjs if a["claw_payout_id"] is None)
+    sums["returns_total"] = sum(a["net"] for a in adjs)
+    sums["gross"] -= sum(a["gross"] for a in adjs)
+    sums["commission"] -= sum(a["commission"] for a in adjs)
     sums = {k: money(v) for k, v in sums.items()}
-    sums["due_now"] = money(sums["payable"] - sums["clawback"])
+    sums["due_now"] = money(sums["payable"] - sums["clawback"] - sums["returns_pending"])
     sums["window_days"] = window
+    ledger.last_adjustments = adjs
     return sums, rows
 
 
@@ -390,7 +402,7 @@ def vendor_payout_create(ctx):
         if abs(expected - sums["due_now"]) > 0.01:
             raise ApiError(409, "The amount changed while you were paying. Close this window and open it again.")
         if sums["due_now"] <= 0:
-            raise ApiError(400, "Nothing is ready to pay for this vendor yet.")
+            raise ApiError(400, "Nothing is ready to pay for this vendor yet." if sums["due_now"] == 0 else "Returned items are deducted, so nothing can be paid yet. It will be taken off the next earnings.")
         pid = db.insert("vendor_payouts", {"vendor_id": v["id"], "amount": sums["due_now"], "method": method, "reference": ref,
                                            "note": note, "created_by": ctx.uid, "created_at": now_iso()})
         for r in rows:
@@ -398,6 +410,7 @@ def vendor_payout_create(ctx):
                 db.run("UPDATE vendor_earnings SET payout_id=? WHERE order_item_id=?", (pid, r["order_item_id"]))
             elif r["state"] == "reversed" and r["payout_id"] and not r["claw_payout_id"]:
                 db.run("UPDATE vendor_earnings SET claw_payout_id=? WHERE order_item_id=?", (pid, r["order_item_id"]))
+        db.run("UPDATE vendor_adjustments SET claw_payout_id=? WHERE vendor_id=? AND claw_payout_id IS NULL", (pid, v["id"]))
         audit(ctx.uid, "vendor_payout", "vendor", v["id"], f"{sums['due_now']} via {method}", ctx.ip)
     notify(v["user_id"], "Payment sent to you", f"The store paid you ₹{sums['due_now']:.2f} ({method.upper()}).", None, email=False)
     return {"ok": True, "id": pid, "amount": sums["due_now"]}
@@ -528,6 +541,7 @@ def vendor_earnings(ctx):
     sums, rows = ledger(db, v["id"])
     pays = db.all("SELECT id, amount, method, reference, note, created_at FROM vendor_payouts WHERE vendor_id=? ORDER BY id DESC", (v["id"],))
     return {"summary": sums, "payouts": pays,
+            "adjustments": [{"order_no": a["order_no"], "name": a["name"], "net": a["net"], "created_at": a["created_at"], "settled": a["claw_payout_id"] is not None} for a in ledger.last_adjustments],
             "rows": [{k: r[k] for k in ("order_no", "name", "qty", "gross", "commission_pct", "commission", "net", "label", "state", "created_at")} for r in rows[:200]]}
 
 
@@ -597,6 +611,34 @@ def _save_profile(db, vid, **fields):
             db.run(f"UPDATE vendor_profiles SET {k}=?, updated_at=? WHERE vendor_id=?", (val, now_iso(), vid))
     else:
         db.run("INSERT INTO vendor_profiles(vendor_id, about, logo_url, updated_at) VALUES (?,?,?,?)", (vid, fields.get("about"), fields.get("logo_url"), now_iso()))
+
+
+@api("GET", "/api/vendor/payout-details", auth="vendor")
+def vendor_payout_get(ctx):
+    v = _me(ctx)
+    return {k: v[k] or "" for k in ("bank_holder", "bank_account", "bank_ifsc", "upi")}
+
+
+@api("PUT", "/api/vendor/payout-details", auth="vendor")
+def vendor_payout_save(ctx):
+    db = get_db()
+    v = _me(ctx)
+    upi = text(ctx.get("upi"), "UPI ID", required=False, max_len=60) or ""
+    if upi and not re.fullmatch(r"[\w.\-]{2,}@[A-Za-z]{2,}", upi):
+        raise ApiError(400, "UPI ID looks wrong. It should look like name@bank.")
+    acc = (text(ctx.get("bank_account"), "Bank account number", required=False, max_len=30) or "").replace(" ", "")
+    if acc and not acc.isdigit():
+        raise ApiError(400, "Bank account number should contain digits only.")
+    ifsc = (text(ctx.get("bank_ifsc"), "IFSC", required=False, max_len=15) or "").upper()
+    if ifsc and not re.fullmatch(r"[A-Z]{4}0[A-Z0-9]{6}", ifsc):
+        raise ApiError(400, "IFSC code looks wrong (example: SBIN0001234).")
+    holder = text(ctx.get("bank_holder"), "Account holder", required=False, max_len=80) or ""
+    if not upi and not (acc and ifsc and holder):
+        raise ApiError(400, "Give either a UPI ID, or the account holder, account number and IFSC.")
+    db.run("UPDATE vendors SET bank_holder=?, bank_account=?, bank_ifsc=?, upi=? WHERE id=?", (holder, acc, ifsc, upi, v["id"]))
+    for ow in db.all("SELECT id FROM users WHERE role='owner' AND status='active'"):
+        notify(ow["id"], f"Vendor updated payment details · {v['business_name']}", "Check them before the next payout.", "/admin#/vendors", email=False)
+    return {"ok": True}
 
 
 @api("PUT", "/api/vendor/shop", auth="vendor")
