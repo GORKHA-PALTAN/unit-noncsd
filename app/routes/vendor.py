@@ -42,6 +42,22 @@ def vendors_list(ctx):
             "pending_products": db.val("SELECT COUNT(*) FROM product_vendors WHERE approval='pending'")}
 
 
+@api("GET", "/api/admin/marketplace-summary", auth="owner")
+def marketplace_summary(ctx):
+    """What the store earns from vendors and what it still owes them."""
+    db = get_db()
+    tot = {"sales": 0.0, "commission": 0.0, "owed_now": 0.0, "clearing": 0.0, "hold": 0.0, "paid": 0.0, "returns": 0.0}
+    per = []
+    for v in db.all("SELECT id, business_name FROM vendors ORDER BY business_name"):
+        s, _rows = ledger(db, v["id"])
+        owed = max(s["due_now"], 0)
+        per.append({"id": v["id"], "name": v["business_name"], "sales": s["gross"], "commission": s["commission"], "owed_now": owed, "clearing": s["clearing"], "paid": s["paid"]})
+        for k, src in (("sales", s["gross"]), ("commission", s["commission"]), ("owed_now", owed), ("clearing", s["clearing"]), ("hold", s["hold"]), ("paid", s["paid"]), ("returns", s["returns_total"])):
+            tot[k] += src
+    per.sort(key=lambda x: -x["sales"])
+    return {"totals": {k: money(x) for k, x in tot.items()}, "vendors": per[:20]}
+
+
 def _vendor_fields(ctx):
     pct = num(ctx.get("commission_pct", 10), "Commission %", 0, 90)
     return {
