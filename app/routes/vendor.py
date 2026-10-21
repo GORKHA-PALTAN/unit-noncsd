@@ -629,3 +629,85 @@ def vendor_shop_logo(ctx):
     if old and old["logo_url"]:
         delete_file(old["logo_url"].replace("/uploads/", "", 1))
     return {"ok": True, "logo": f"/uploads/vendors/{name}"}
+
+
+# ================================================================ vendor applications (apply -> owner approves)
+@api("POST", "/api/vendor-apply", limit="vendor_apply")
+def vendor_apply(ctx):
+    if ctx.get("website"):  # hidden field only bots fill in
+        return {"ok": True}
+    db = get_db()
+    email = text(ctx.get("email"), "Email", max_len=120).lower()
+    if not EMAIL_RE.match(email):
+        raise ApiError(400, "Enter a valid email.")
+    pw = ctx.get("password")
+    prob = password_problem(pw)
+    if prob:
+        raise ApiError(400, prob)
+    if db.one("SELECT id FROM users WHERE email=?", (email,)):
+        raise ApiError(409, "This email already has an account. Please use a different email for your vendor account.")
+    if db.one("SELECT id FROM vendor_applications WHERE email=? AND status='pending'", (email,)):
+        raise ApiError(409, "You have already applied with this email. The store will contact you soon.")
+    d = {"business_name": text(ctx.get("business_name"), "Business name", max_len=100, min_len=2),
+         "contact_name": text(ctx.get("contact_name"), "Your name", max_len=80, min_len=2), "email": email,
+         "phone": text(ctx.get("phone"), "Phone", max_len=16, min_len=8),
+         "address": text(ctx.get("address"), "Address", required=False, max_len=300),
+         "gst_no": text(ctx.get("gst_no"), "GST number", required=False, max_len=20),
+         "about": text(ctx.get("about"), "What you sell", max_len=600, min_len=5),
+         "password_hash": hash_password(pw), "status": "pending", "created_at": now_iso()}
+    aid = db.insert("vendor_applications", d)
+    for ow in db.all("SELECT id FROM users WHERE role='owner' AND status='active'"):
+        notify(ow["id"], "New vendor application", f"{d['business_name']} ({d['contact_name']}) wants to sell on your store.", "/admin#/vendors", email=True)
+    return {"ok": True, "id": aid}
+
+
+@api("GET", "/api/admin/vendor-applications", auth="owner")
+def vendor_applications(ctx):
+    rows = get_db().all("SELECT id, business_name, contact_name, email, phone, address, gst_no, about, status, note, created_at, decided_at "
+                        "FROM vendor_applications ORDER BY CASE status WHEN 'pending' THEN 0 ELSE 1 END, id DESC LIMIT 100")
+    return {"items": rows}
+
+
+@api("POST", "/api/admin/vendor-applications/{aid:int}/approve", auth="owner")
+def vendor_application_approve(ctx):
+    db = get_db()
+    a = db.one("SELECT * FROM vendor_applications WHERE id=?", (ctx.params["aid"],))
+    if not a or a["status"] != "pending":
+        raise ApiError(404, "Application not found or already decided.")
+    if db.one("SELECT id FROM users WHERE email=?", (a["email"],)):
+        raise ApiError(409, "An account with this email already exists now.")
+    pct = num(ctx.get("commission_pct", 10), "Commission %", 0, 90)
+    t = now_iso()
+    with transaction(db):
+        uid = db.insert("users", {"name": a["contact_name"], "email": a["email"], "phone": a["phone"], "password_hash": a["password_hash"],
+                                  "role": "vendor", "permissions": "[]", "status": "active", "created_at": t})
+        vid = db.insert("vendors", {"user_id": uid, "business_name": a["business_name"], "contact_name": a["contact_name"], "phone": a["phone"],
+                                    "address": a["address"], "gst_no": a["gst_no"], "commission_pct": pct, "created_at": t})
+        if a["about"]:
+            db.run("INSERT INTO vendor_profiles(vendor_id, about, logo_url, updated_at) VALUES (?,?,?,?)", (vid, a["about"][:600], None, t))
+        db.run("UPDATE vendor_applications SET status='approved', vendor_id=?, decided_at=? WHERE id=?", (vid, t, a["id"]))
+        audit(ctx.uid, "vendor_application_approve", "vendor", vid, a["business_name"], ctx.ip)
+    vendor_map(force=True)
+    try:
+        from ..services.common import _send_mail
+        from ..services import mailer
+        if mailer.configured():
+            import threading
+            threading.Thread(target=_send_mail, args=(a["email"], "Your vendor account is approved",
+                             f"Hello {a['contact_name']},\n\nYour application to sell on {get_settings().get('store_name') or 'our store'} is approved.\n"
+                             "Sign in at /vendor on our website with this email and the password you chose when you applied.\n"), daemon=True).start()
+    except Exception:
+        pass
+    return {"ok": True, "vendor_id": vid}
+
+
+@api("POST", "/api/admin/vendor-applications/{aid:int}/reject", auth="owner")
+def vendor_application_reject(ctx):
+    db = get_db()
+    a = db.one("SELECT id, business_name FROM vendor_applications WHERE id=? AND status='pending'", (ctx.params["aid"],))
+    if not a:
+        raise ApiError(404, "Application not found or already decided.")
+    db.run("UPDATE vendor_applications SET status='rejected', note=?, decided_at=? WHERE id=?",
+           (text(ctx.get("note"), "Note", required=False, max_len=300), now_iso(), a["id"]))
+    audit(ctx.uid, "vendor_application_reject", "vendor_application", a["id"], a["business_name"], ctx.ip)
+    return {"ok": True}
