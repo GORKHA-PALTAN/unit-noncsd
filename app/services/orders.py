@@ -308,6 +308,8 @@ def change_status(order_id, new_status, actor, note=None, restock=True, system=F
             raise ApiError(400, "Unknown status.")
         if not system and new_status not in TRANSITIONS.get(cur, []):
             raise ApiError(400, f"Cannot move an order from '{STATUS_LABEL[cur]}' to '{STATUS_LABEL[new_status]}'.")
+        if new_status in ("return_requested", "return_in_progress", "returned") and cur != new_status and _has_item_returns(order_id):
+            raise ApiError(400, "This order has item returns in progress, so it can't be returned as a whole.")
         if new_status == "refund_processing" and order["payment_status"] not in ("paid",):
             raise ApiError(400, "No payment has been received for this order, so there is nothing to refund.")
         if new_status in ("confirmed", "processing", "packed") and cur == "placed" and order["payment_method"] != "cod":
@@ -410,11 +412,17 @@ def customer_return(order, user, reason):
     days = (now_utc() - parse_iso(order["delivered_at"])).days
     if days > int(s["return_window_days"]):
         raise ApiError(400, f"The {s['return_window_days']}-day return window for this order has closed.")
+    if _has_item_returns(order["id"]):
+        raise ApiError(400, "This order already has item returns, so it can't be returned as a whole.")
     with transaction(db):
         db.insert("return_requests", {"order_id": order["id"], "user_id": user["id"], "kind": "return",
                                       "reason": reason, "status": "pending", "prev_status": "delivered",
                                       "created_at": now_iso()})
     return change_status(order["id"], "return_requested", user, f"Return requested: {reason}", system=True)
+
+
+def _has_item_returns(order_id):
+    return bool(get_db().one("SELECT id FROM item_returns WHERE order_id=? AND status<>'rejected'", (order_id,)))
 
 
 def order_actions(order):
@@ -425,7 +433,7 @@ def order_actions(order):
     return {
         "can_cancel": order["status"] in CUSTOMER_CANCEL_DIRECT | CUSTOMER_CANCEL_REQUEST,
         "cancel_needs_approval": order["status"] in CUSTOMER_CANCEL_REQUEST,
-        "can_return": can_return,
+        "can_return": can_return and not _has_item_returns(order["id"]),
         "can_pay": order["status"] == "payment_pending" and order["payment_status"] in ("pending", "failed")
                    and not _upi_submitted(order),
     }
@@ -482,6 +490,11 @@ def serialize_order(db, order, admin=False):
     for f in db.all("SELECT f.vendor_id, v.business_name AS vendor, f.status, f.courier, f.tracking_no FROM vendor_fulfillment f JOIN vendors v ON v.id=f.vendor_id WHERE f.order_id=?", (order["id"],)):
         out["shipments"].append({"vendor": f["vendor"], "vendor_id": f["vendor_id"], "status": f["status"], "courier": f["courier"], "tracking_no": f["tracking_no"],
                                  "items": [f"{i['name']} × {i['qty']}" for i in out["items"] if i.get("vendor_id") == f["vendor_id"]]})
+    from ..routes import item_returns as _ir
+    rm = _ir.returnable_map(db, order["id"])
+    for it in out["items"]:
+        it["returnable"] = rm.get(it["id"], 0)
+    out["item_returns"] = _ir.item_returns_for_order(db, order["id"])
     if admin:
         out["vendor_parts"] = db.all("SELECT v.business_name AS vendor, f.status, f.courier, f.tracking_no FROM vendor_fulfillment f JOIN vendors v ON v.id=f.vendor_id WHERE f.order_id=?", (order["id"],))
     out["timeline"] = events
@@ -491,6 +504,7 @@ def serialize_order(db, order, admin=False):
     out["requests"] = db.all("SELECT id, kind, reason, status, resolution_note, created_at, resolved_at FROM return_requests "
                              "WHERE order_id=? ORDER BY id", (order["id"],))
     out["actions"] = order_actions(order)
+    out["actions"]["can_return_items"] = _ir.can_return_items(db, order)
     if order["payment_method"] == "upi":
         p = db.one("SELECT provider_payment_id AS utr, status, error, created_at FROM payments WHERE order_id=? AND method='upi' "
                    "ORDER BY id DESC LIMIT 1", (order["id"],))
