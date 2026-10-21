@@ -1,0 +1,42 @@
+.vtop { display: flex; align-items: center; gap: 12px; padding: 10px 16px; background: #fff; border-bottom: 1px solid var(--line, #e3e5ea); position: sticky; top: 0; z-index: 5; }
+.vtop img { height: 40px; }
+.vtop b { font-size: 16px; color: var(--navy, #2b3047); }
+.vtop .grow { flex: 1; }
+.vwrap { max-width: 1000px; margin: 0 auto; padding: 16px; }
+.vhelp { background: #fff8e1; border: 1px solid #ffe082; border-radius: 12px; padding: 12px 14px; margin-bottom: 14px; font-size: 15px; }
+.vgrid { display: grid; gap: 12px; }
+.vcard { background: #fff; border: 1px solid var(--line, #e3e5ea); border-radius: 14px; padding: 12px; display: grid; grid-template-columns: 72px 1fr; gap: 12px; align-items: start; }
+.vcard img, .vcard .noimg { width: 72px; height: 72px; border-radius: 10px; object-fit: cover; background: #eef0f4; display: grid; place-items: center; font-size: 11px; color: #777; text-align: center; }
+.vcard h3 { font-size: 17px; margin: 0 0 2px; }
+.vcard .meta { color: #666; font-size: 14px; }
+.vcard .acts { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+.vimgs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+.vimgs div { position: relative; }
+.vimgs img { width: 84px; height: 84px; object-fit: cover; border-radius: 10px; }
+.vimgs button { position: absolute; top: -6px; right: -6px; width: 24px; height: 24px; border-radius: 50%; border: 0; background: #c62828; color: #fff; cursor: pointer; }
+.vtabs { display: flex; gap: 4px; overflow-x: auto; padding: 0 12px; background: #fff; border-bottom: 1px solid var(--line, #e3e5ea); position: sticky; top: 60px; z-index: 4; }
+.vtabs a { padding: 12px 14px; font-weight: 600; color: #555; white-space: nowrap; border-bottom: 3px solid transparent; text-decoration: none; }
+.vtabs a.on { color: var(--teal, #1f8a8a); border-color: var(--teal, #1f8a8a); }
+.vh { font-size: 20px; margin: 4px 0 12px; }
+.vstats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 16px; }
+.vstat { background: #fff; border: 1px solid var(--line, #e3e5ea); border-radius: 14px; padding: 12px 14px; }
+.vstat .l { font-size: 13px; color: #666; font-weight: 600; }
+.vstat .v { font-size: 24px; font-weight: 700; margin-top: 2px; color: var(--navy, #2b3047); }
+.vstat .s { font-size: 13px; color: #777; margin-top: 2px; }
+.vstat.ok { border-color: #81c784; background: #f1faf2; }
+.vstat.warn { border-color: #ffb74d; background: #fff8ec; }
+.vcardbox { background: #fff; border: 1px solid var(--line, #e3e5ea); border-radius: 14px; padding: 14px; margin-bottom: 16px; }
+.vcardbox h3 { margin: 0 0 10px; font-size: 16px; }
+.vgrid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; }
+.vrow { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #eee; }
+.vrow .bad { color: #c62828; }
+.vchips { display: flex; gap: 8px; overflow-x: auto; margin-bottom: 12px; }
+.vchips button { border: 1px solid #cfd3dd; background: #fff; border-radius: 999px; padding: 8px 14px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+.vchips button.on { background: var(--teal, #1f8a8a); color: #fff; border-color: var(--teal, #1f8a8a); }
+.vorder { background: #fff; border: 1px solid var(--line, #e3e5ea); border-radius: 14px; padding: 12px; }
+.vo-h { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 8px; }
+.vo-i { display: flex; gap: 10px; align-items: center; margin-bottom: 6px; }
+.vo-i img, .vo-i .noimg { width: 48px; height: 48px; border-radius: 8px; object-fit: cover; background: #eef0f4; }
+.vo-ship { background: #f6f7fa; border-radius: 10px; padding: 8px 10px; margin: 8px 0; font-size: 14px; }
+.vo-f { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.vo-f .grow { flex: 1; }
