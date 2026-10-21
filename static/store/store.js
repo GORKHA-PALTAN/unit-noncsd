@@ -146,6 +146,7 @@
       else if (r === "c") await pageList({ category: parts[1] }, q);
       else if (r === "search") await pageList({}, q);
       else if (r === "p") await pageProduct(parts[1]);
+      else if (r === "vendor") await pageShop(parts[1]);
       else if (r === "categories") pageCategories();
       else if (r === "cart") await needLogin(pageCart);
       else if (r === "checkout") await needLogin(pageCheckout);
@@ -191,6 +192,7 @@
       <div class="pc-body">
         <span class="pc-brand">${esc(p.brand || "")}</span>
         <a href="#/p/${p.slug}" class="pc-name">${esc(p.name)}</a>
+        ${p.vendor ? `<a href="#/vendor/${p.vendor_id}" class="pc-vendor">Sold by ${esc(p.vendor)}</a>` : ""}
         <div class="price"><b>${fmt.inr(p.price)}</b>${p.mrp && p.mrp > p.price ? `<s>${fmt.inr(p.mrp)}</s><span class="off">${p.discount}% off</span>` : ""}</div>
         <div class="pc-meta">${p.reviews ? `<span class="rate">${p.rating} ★</span><span>(${fmt.num(p.reviews)})</span>` : ""}${stock}</div>
         <div class="pc-add"><button class="btn btn-sm ${p.stock === "out" ? "" : "btn-dark"}" data-add="${p.id}" ${p.stock === "out" ? "disabled" : ""}>${p.stock === "out" ? "Out of stock" : "Add to cart"}</button></div>
@@ -259,6 +261,7 @@
       </section>
       <section class="sec"><div class="sec-h"><h2>Shop by category</h2><a href="#/categories">All categories ›</a></div>
         <div class="cat-grid">${cats.map((c) => `<a class="tile" href="#/c/${c.slug}"><div class="t-img">${c.image ? `<img src="${esc(c.image)}" alt="" loading="lazy">` : `<span style="font-size:40px">${ICON[c.icon] || "🛍️"}</span>`}</div>${esc(c.name)}</a>`).join("")}</div></section>
+      ${(h.vendors || []).length ? `<section class="sec"><div class="sec-h"><h2>Our vendors</h2></div><div class="vendor-row">${h.vendors.map((v) => `<a class="vendor-chip" href="#/vendor/${v.id}">${v.logo ? `<img src="${esc(v.logo)}" alt="">` : `<span class="vc-av">${esc((v.name || "?")[0])}</span>`}<b>${esc(v.name)}</b><small>${v.products} product${v.products === 1 ? "" : "s"}</small></a>`).join("")}</div></section>` : ""}
       ${rail("Featured", h.featured, "#/search?sort=rating" + dq)}
       ${exploreCat ? `<section class="sec"><a class="explore" href="#/c/${exploreCat.slug}"><h2>Explore<br>${esc(exploreCat.name)}</h2>
         ${exploreCat.image ? `<img src="${esc(exploreCat.image)}" alt="">` : "<span></span>"}<span class="vert">${exploreCat.children.slice(0, 3).map((c) => esc(c.name)).join(" | ")}</span></a>
@@ -303,6 +306,16 @@
       <h2 style="font-size:18px;margin:18px 0 10px;color:var(--teal)">${esc(d)}</h2>
       <div class="tile-grid" style="grid-template-columns:repeat(auto-fill,minmax(104px,1fr))">${S.meta.categories.filter((c) => c.department === d).map((c) => `
         <a class="tile" href="#/c/${c.slug}"><div class="t-img">${c.image ? `<img src="${esc(c.image)}" alt="" loading="lazy">` : ICON[c.icon] || ""}</div>${esc(c.name)}</a>`).join("")}</div>`).join("")}</div>`;
+  }
+
+  async function pageShop(id) {
+    const d = await api("GET", "/api/shops/" + encodeURIComponent(id));
+    main.innerHTML = `<div class="page"><div style="display:flex;gap:14px;align-items:center;margin-bottom:14px">
+        ${d.logo ? `<img src="${esc(d.logo)}" alt="" style="width:72px;height:72px;border-radius:50%;object-fit:cover;border:1px solid var(--line)">` : `<div style="width:72px;height:72px;border-radius:50%;background:var(--navy);color:#fff;display:grid;place-items:center;font-size:30px;font-weight:700">${esc((d.name || "?")[0])}</div>`}
+        <div><h1 style="margin:0">${esc(d.name)}</h1><span class="count">${fmt.num(d.items.length)} product${d.items.length === 1 ? "" : "s"}</span></div></div>
+      ${d.about ? `<p style="max-width:60ch;margin:0 0 16px">${esc(d.about)}</p>` : ""}
+      ${d.items.length ? `<div class="grid">${d.items.map(card).join("")}</div>` : `<div class="empty"><h3>No products yet</h3><p>This shop has nothing listed right now.</p></div>`}</div>`;
+    bindCards(main);
   }
 
   async function pageList(base, q) {
@@ -388,12 +401,15 @@
       <div>
         <div style="font-size:14px;color:var(--ink-3)"><a href="#/">Home</a> › ${p.category ? `<a href="#/c/${p.category.slug}">${esc(p.category.name)}</a>` : ""}${p.subcategory ? ` › <a href="#/c/${p.subcategory.slug}">${esc(p.subcategory.name)}</a>` : ""}</div>
         <div class="pc-brand" style="margin-top:10px">${esc(p.brand || "")}</div>
-        ${p.sold_by ? `<div class="muted" style="font-size:14px;margin-top:2px">Sold by <b>${esc(p.sold_by)}</b></div>` : ""}
+        ${p.sold_by ? `<div class="muted" style="font-size:14px;margin-top:2px">Sold by ${p.sold_by_id ? `<a href="#/vendor/${p.sold_by_id}" style="color:var(--teal);font-weight:700">${esc(p.sold_by)}</a>` : `<b>${esc(p.sold_by)}</b>`}</div>` : ""}
         <h1>${esc(p.name)}</h1>
         ${p.reviews_count ? `<div class="pc-meta"><span class="rate">${p.rating} ★</span> ${fmt.num(p.reviews_count)} ratings</div>` : `<div class="pc-meta">No ratings yet</div>`}
         <div class="price" style="margin-top:10px"><b>${fmt.inr(p.price)}</b>${p.mrp && p.mrp > p.price ? `<s>MRP ${fmt.inr(p.mrp)}</s><span class="off">${p.discount}% off</span>` : ""}</div>
         <div style="font-size:13px;color:var(--ink-3)">Inclusive of all taxes (GST ${p.tax_rate}%)</div>
         ${p.sample ? `<div class="sample-note"><b>Sample product.</b> This is demonstration data, not real purchasable inventory. Orders you place for it are for testing the app.</div>` : ""}
+        ${p.vendor ? `<a href="#/vendor/${p.vendor.id}" class="seller-box" style="text-decoration:none;color:inherit">
+          ${p.vendor.logo ? `<img src="${esc(p.vendor.logo)}" alt="">` : `<span class="sb-av">${esc((p.vendor.name || "?")[0])}</span>`}
+          <span><small>Sold by</small><b>${esc(p.vendor.name)}</b>${p.vendor.about ? `<span class="sb-about">${esc(p.vendor.about)}</span>` : ""}<span class="sb-more">${p.vendor.products} product${p.vendor.products === 1 ? "" : "s"} · Visit shop ›</span></span></a>` : ""}
         <div style="margin:12px 0">${p.stock === "out" ? `<span class="pill bad">Out of stock</span>` : p.stock === "low" ? `<span class="pill warn">Only ${p.available} left in stock</span>` : `<span class="pill ok">In stock</span>`}</div>
         ${p.stock !== "out" ? `<div style="display:flex;align-items:center;gap:12px"><span style="font-weight:600">Quantity</span>
           <div class="qty"><button id="q-dec" aria-label="Decrease quantity">−</button><span id="q-val" aria-live="polite">1</span><button id="q-inc" aria-label="Increase quantity">+</button></div>
@@ -464,6 +480,7 @@
     main.innerHTML = `<div class="page"><h1>Cart (${S.counts.cart})</h1><div class="two-col">
       <div class="box">${c.items.map((i) => `<div class="citem"><a href="#/p/${i.slug}"><img src="${esc(i.image)}" alt=""></a>
         <div><a href="#/p/${i.slug}" class="ci-name">${esc(i.name)}</a>
+          ${i.vendor ? `<div class="muted" style="font-size:13px">Sold by <a href="#/vendor/${i.vendor_id}" style="color:var(--teal);font-weight:600">${esc(i.vendor)}</a></div>` : ""}
           <div class="price"><b>${fmt.inr(i.price)}</b>${i.mrp && i.mrp > i.price ? `<s>${fmt.inr(i.mrp)}</s><span class="off">${i.discount}% off</span>` : ""}</div>
           ${i.issue ? `<div class="issue">⚠ ${esc(i.issue)}</div>` : ""}
           <div class="ci-row"><div class="qty"><button data-dec="${i.id}" ${i.qty <= 1 ? "disabled" : ""} aria-label="Decrease">−</button><span>${i.qty}</span><button data-inc="${i.id}" ${i.qty >= i.available_qty ? "disabled" : ""} aria-label="Increase">+</button></div>
@@ -709,7 +726,7 @@
           ${o.tracking_no ? `<p>Courier: <b>${esc(o.courier || "—")}</b> · Tracking no. <b>${esc(o.tracking_no)}</b></p>` : ""}
           <ul class="timeline">${o.timeline.slice().reverse().map((e) => `<li class="${["cancelled", "delivery_failed"].includes(e.status) ? "alert" : ""}"><div class="tl-l">${esc(e.label)}</div>${e.note ? `<div class="tl-n">${esc(e.note)}</div>` : ""}<div class="tl-t">${fmt.datetime(e.at)}</div></li>`).join("")}</ul>
         </div>
-        <div class="box"><h2>Items</h2>${o.items.map((i) => `<div class="citem"><img src="${esc(i.image)}" alt=""><div><div class="ci-name">${esc(i.name)}</div>
+        <div class="box"><h2>Items</h2>${o.items.map((i) => `<div class="citem"><img src="${esc(i.image)}" alt=""><div><div class="ci-name">${esc(i.name)}</div>${i.vendor ? `<div class="muted" style="font-size:13px">Sold by ${esc(i.vendor)}</div>` : ""}
           <div style="font-size:14px;color:var(--ink-2)">${i.qty} × ${fmt.inr(i.unit_price)} = <b>${fmt.inr(i.line_total)}</b></div></div></div>`).join("")}</div>
       </div>
       <div class="sticky"><div class="box" style="margin-bottom:14px"><h2>Payment</h2>
