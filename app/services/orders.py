@@ -472,6 +472,13 @@ def serialize_order(db, order, admin=False):
     out["status_label"] = STATUS_LABEL.get(order["status"], order["status"])
     out["items"] = [{**{k: i[k] for k in i.keys() if admin or k != "cost_price"},
                      "image": imgs.get(i["product_id"], "/static/common/placeholder.svg")} for i in items]
+    if admin:
+        vmap = {r["product_id"]: r for r in db.all("SELECT pv.product_id, v.id AS vendor_id, v.business_name FROM product_vendors pv JOIN vendors v ON v.id=pv.vendor_id "
+                                                   "WHERE pv.product_id IN (SELECT product_id FROM order_items WHERE order_id=?)", (order["id"],))}
+        for it in out["items"]:
+            vr = vmap.get(it.get("product_id"))
+            it["vendor"] = vr["business_name"] if vr else None
+        out["vendor_parts"] = db.all("SELECT v.business_name AS vendor, f.status, f.courier, f.tracking_no FROM vendor_fulfillment f JOIN vendors v ON v.id=f.vendor_id WHERE f.order_id=?", (order["id"],))
     out["timeline"] = events
     out["progress"] = flow
     out["refunds"] = db.all("SELECT amount, status, method, reference, created_at, completed_at FROM refunds WHERE order_id=?",
