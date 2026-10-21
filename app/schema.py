@@ -81,6 +81,10 @@ CREATE TABLE IF NOT EXISTS vendor_earnings (
 );
 CREATE INDEX IF NOT EXISTS ix_ve_vendor ON vendor_earnings(vendor_id);
 
+CREATE TABLE IF NOT EXISTS vendor_profiles (
+  vendor_id INTEGER PRIMARY KEY, about TEXT, logo_url TEXT, updated_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS banner_audios (
   banner_id INTEGER PRIMARY KEY, url TEXT NOT NULL, updated_at TEXT NOT NULL
 );
