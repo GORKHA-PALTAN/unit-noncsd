@@ -185,7 +185,7 @@ def admin_products(ctx):
             "sold": "p.units_sold DESC", "updated": "p.updated_at DESC"}.get(ctx.q("sort"), "p.updated_at DESC")
     total = db.val(f"SELECT COUNT(*) FROM products p WHERE {w}", params)
     page, per, off = page_args(ctx, 25, 200)
-    rows = db.all(f"SELECT p.*, c.name AS category, sc.name AS subcategory FROM products p LEFT JOIN categories c ON c.id=p.category_id "
+    rows = db.all(f"SELECT p.*, c.name AS category, sc.name AS subcategory, (SELECT v.business_name FROM product_vendors pv JOIN vendors v ON v.id=pv.vendor_id WHERE pv.product_id=p.id) AS vendor FROM products p LEFT JOIN categories c ON c.id=p.category_id "
                   f"LEFT JOIN categories sc ON sc.id=p.subcategory_id WHERE {w} ORDER BY {sort}, p.id DESC LIMIT {per} OFFSET {off}", params)
     imgs = first_images([r["id"] for r in rows])
     from ..security import has_perm
@@ -1115,7 +1115,7 @@ def delete_expense(ctx):
 # ================================================================ marketing
 @api("GET", "/api/admin/banners", auth="admin", perm="marketing")
 def banners(ctx):
-    return {"items": get_db().all("SELECT b.*, v.url AS video_url FROM banners b LEFT JOIN banner_videos v ON v.banner_id=b.id ORDER BY b.sort, b.id"), "announcement": get_settings()["announcement"]}
+    return {"items": get_db().all("SELECT b.*, v.url AS video_url, au.url AS audio_url FROM banners b LEFT JOIN banner_videos v ON v.banner_id=b.id LEFT JOIN banner_audios au ON au.banner_id=b.id ORDER BY b.sort, b.id"), "announcement": get_settings()["announcement"]}
 
 
 def _banner_fields(ctx):
@@ -1239,9 +1239,70 @@ def banner_video_remove(ctx):
     return {"ok": True}
 
 
+MAX_AUDIO_BYTES = 8 * 1024 * 1024
+
+
+def _asniff(data):
+    if data[:3] == b"ID3" or (len(data) > 2 and data[0] == 0xFF and data[1] & 0xE0 == 0xE0):
+        return "mp3"
+    if data[4:8] == b"ftyp":
+        return "m4a"
+    if data[:4] == b"OggS":
+        return "ogg"
+    if data[:4] == b"RIFF" and data[8:12] == b"WAVE":
+        return "wav"
+    return None
+
+
+@api("POST", "/api/admin/banners/{bid:int}/audio", auth="admin", perm="marketing", multipart=True)
+def banner_audio_set(ctx):
+    db = get_db()
+    bid = ctx.params["bid"]
+    brow = db.one("SELECT id, title FROM banners WHERE id=?", (bid,))
+    if not brow:
+        raise ApiError(404, "Banner not found.")
+    f = ctx.form.get("file") if ctx.form else None
+    if f is None or not hasattr(f, "file"):
+        raise ApiError(400, "Choose an audio file first.")
+    f.file.seek(0)
+    data = f.file.read(MAX_AUDIO_BYTES + 1)
+    if len(data) > MAX_AUDIO_BYTES:
+        raise ApiError(400, "Audio is larger than 8 MB. Please use a shorter clip.")
+    ext = _asniff(data)
+    if not ext:
+        raise ApiError(400, "Only MP3, M4A, OGG or WAV audio is allowed.")
+    name = f"{bid}_{secrets.token_hex(8)}.{ext}"
+    save_file(f"banners/{name}", {"mp3": "audio/mpeg", "m4a": "audio/mp4", "ogg": "audio/ogg", "wav": "audio/wav"}[ext], data)
+    url = f"/uploads/banners/{name}"
+    old = db.one("SELECT url FROM banner_audios WHERE banner_id=?", (bid,))
+    if old:
+        db.run("UPDATE banner_audios SET url=?, updated_at=? WHERE banner_id=?", (url, now_iso(), bid))
+        delete_file(old["url"].replace("/uploads/", "", 1))
+    else:
+        db.run("INSERT INTO banner_audios(banner_id, url, updated_at) VALUES (?, ?, ?)", (bid, url, now_iso()))
+    audit(ctx.uid, "banner_audio", "banner", bid, brow["title"], ctx.ip)
+    return {"ok": True, "audio": url}
+
+
+@api("DELETE", "/api/admin/banners/{bid:int}/audio", auth="admin", perm="marketing")
+def banner_audio_remove(ctx):
+    db = get_db()
+    bid = ctx.params["bid"]
+    old = db.one("SELECT url FROM banner_audios WHERE banner_id=?", (bid,))
+    if old:
+        db.run("DELETE FROM banner_audios WHERE banner_id=?", (bid,))
+        delete_file(old["url"].replace("/uploads/", "", 1))
+    audit(ctx.uid, "banner_audio_remove", "banner", bid, None, ctx.ip)
+    return {"ok": True}
+
+
 @api("DELETE", "/api/admin/banners/{bid:int}", auth="admin", perm="marketing")
 def delete_banner(ctx):
     db = get_db()
+    oa = db.one("SELECT url FROM banner_audios WHERE banner_id=?", (ctx.params["bid"],))
+    if oa:
+        db.run("DELETE FROM banner_audios WHERE banner_id=?", (ctx.params["bid"],))
+        delete_file(oa["url"].replace("/uploads/", "", 1))
     ov = db.one("SELECT url FROM banner_videos WHERE banner_id=?", (ctx.params["bid"],))
     if ov:
         db.run("DELETE FROM banner_videos WHERE banner_id=?", (ctx.params["bid"],))
