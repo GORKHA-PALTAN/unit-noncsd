@@ -123,6 +123,7 @@ LIMITS = {
     "otp_send": (6, 900),
     "otp_verify": (20, 900),
     "register": (6, 3600),
+    "vendor_apply": (5, 3600),
     "order": (20, 600),
     "pay": (30, 600),
     "review": (10, 3600),

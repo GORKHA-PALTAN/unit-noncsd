@@ -85,6 +85,12 @@ CREATE TABLE IF NOT EXISTS vendor_profiles (
   vendor_id INTEGER PRIMARY KEY, about TEXT, logo_url TEXT, updated_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS vendor_applications (
+  id {PK}, business_name TEXT NOT NULL, contact_name TEXT NOT NULL, email TEXT NOT NULL, phone TEXT, address TEXT, gst_no TEXT,
+  about TEXT, password_hash TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending', note TEXT, vendor_id INTEGER,
+  created_at TEXT NOT NULL, decided_at TEXT
+);
+
 CREATE TABLE IF NOT EXISTS banner_audios (
   banner_id INTEGER PRIMARY KEY, url TEXT NOT NULL, updated_at TEXT NOT NULL
 );
