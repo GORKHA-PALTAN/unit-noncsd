@@ -118,8 +118,24 @@
     el.innerHTML = `<h2 class="vh">Your earnings</h2>
       <div class="vstats">${stat("Ready to be paid", fmt.inr(S.due_now), "Paid to you by the store", S.due_now > 0 ? "ok" : "")}${stat("Clearing", fmt.inr(S.clearing), `Return period (${S.window_days} days)`)}${stat("On hold", fmt.inr(S.hold), "A customer asked to return")}${stat("Already paid", fmt.inr(S.paid))}</div>
       <div class="vhelp">💡 <b>How it works:</b> when an order is delivered, you earn the sale amount minus the store's commission. The money becomes “Ready to be paid” after the ${S.window_days}-day return period. If an order is returned, it is taken off. ${S.clawback ? `<br><b>${fmt.inr(S.clawback)}</b> will be taken off your next payment because of returns after you were paid.` : ""}${S.returns_pending ? `<br><b>${fmt.inr(S.returns_pending)}</b> will be taken off your next payment because customers returned some items after you were paid.` : ""}${(d.adjustments || []).length ? `<br>Returned items so far: ${d.adjustments.map((a) => esc(a.name) + " (" + esc(a.order_no) + ", −" + fmt.inr(a.net) + ")").join("; ")}.` : ""}</div>
+      <div class="vcardbox"><h3>Where should the store send your money?</h3><div id="pd"></div></div>
       <div class="vcardbox"><h3>Payments you received</h3>${d.payouts.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Date</th><th class="num">Amount</th><th>How</th><th>Reference</th></tr></thead><tbody>${d.payouts.map((p) => `<tr><td>${fmt.date(p.created_at)}</td><td class="num"><b>${fmt.inr(p.amount)}</b></td><td>${esc((p.method || "").toUpperCase())}</td><td class="muted">${esc(p.reference || "")}</td></tr>`).join("")}</tbody></table></div>` : '<p class="muted">No payment yet.</p>'}</div>
       <div class="vcardbox"><h3>Every sale</h3>${d.rows.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Order</th><th>Product</th><th class="num">Sale</th><th class="num">Commission</th><th class="num">You earn</th><th>Status</th></tr></thead><tbody>${d.rows.map((r) => `<tr><td>${esc(r.order_no)}</td><td>${esc(r.name)} × ${r.qty}</td><td class="num">${fmt.inr(r.gross)}</td><td class="num">${fmt.inr(r.commission)} <span class="muted">(${r.commission_pct}%)</span></td><td class="num"><b>${fmt.inr(r.net)}</b></td><td><span class="pill ${r.state === "payable" || r.label === "Paid" ? "ok" : r.state === "reversed" ? "bad" : "warn"}">${esc(r.label)}</span></td></tr>`).join("")}</tbody></table></div>` : '<p class="muted">Earnings appear here after your first delivered order.</p>'}</div>`;
+    payDetails(el);
+  }
+
+  async function payDetails(el) {
+    const d = await api("GET", "/api/vendor/payout-details");
+    const box = el.querySelector("#pd");
+    box.innerHTML = `<p class="muted" style="margin-top:0">Give a UPI ID, or your bank details. Check them carefully — payments are sent here.</p>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px"><label class="fld"><span>UPI ID</span><input id="pu" value="${esc(d.upi)}" placeholder="name@bank" maxlength="60"></label></div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px"><label class="fld"><span>Account holder name</span><input id="ph" value="${esc(d.bank_holder)}" maxlength="80"></label>
+      <label class="fld"><span>Bank account number</span><input id="pa" value="${esc(d.bank_account)}" inputmode="numeric" maxlength="30"></label>
+      <label class="fld"><span>IFSC code</span><input id="pi" value="${esc(d.bank_ifsc)}" maxlength="15" placeholder="SBIN0001234"></label></div>
+      <button class="btn btn-primary btn-sm" id="psv">Save payment details</button>`;
+    box.querySelector("#psv").onclick = async () => {
+      try { await api("PUT", "/api/vendor/payout-details", { upi: box.querySelector("#pu").value.trim(), bank_holder: box.querySelector("#ph").value, bank_account: box.querySelector("#pa").value, bank_ifsc: box.querySelector("#pi").value }); toast("Payment details saved"); } catch (e) { toast(e.message, "err"); }
+    };
   }
 
   async function shop(el) {
