@@ -5,7 +5,7 @@ body { padding-bottom: calc(72px + env(safe-area-inset-bottom)); background: #ff
 .top { position: sticky; top: 0; z-index: 50; background: #fff; }
 .top-row { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 8px; height: 64px; padding: 0 8px; max-width: 1240px; margin: 0 auto; }
 .brand { display: flex; align-items: center; gap: 8px; justify-self: center; }
-.brand-tri { width: 26px; height: 26px; flex: none; }
+.brand-tri { height: 25px; width: auto; flex: none; }
 .brand-txt { display: flex; flex-direction: column; line-height: 1; }
 .brand-txt b { font-size: 18px; letter-spacing: -.01em; color: var(--navy); }
 .brand-txt small { font-size: 10px; letter-spacing: .22em; font-weight: 700; color: var(--teal); margin-top: 3px; }
