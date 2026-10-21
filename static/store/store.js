@@ -726,6 +726,7 @@
           ${o.tracking_no ? `<p>Courier: <b>${esc(o.courier || "—")}</b> · Tracking no. <b>${esc(o.tracking_no)}</b></p>` : ""}
           <ul class="timeline">${o.timeline.slice().reverse().map((e) => `<li class="${["cancelled", "delivery_failed"].includes(e.status) ? "alert" : ""}"><div class="tl-l">${esc(e.label)}</div>${e.note ? `<div class="tl-n">${esc(e.note)}</div>` : ""}<div class="tl-t">${fmt.datetime(e.at)}</div></li>`).join("")}</ul>
         </div>
+        ${(o.shipments || []).length ? `<div class="box"><h2>Shipments from our vendors</h2>${o.shipments.map((x) => `<div style="padding:8px 0;border-bottom:1px solid var(--line)"><b><a href="#/vendor/${x.vendor_id}" style="color:var(--teal)">${esc(x.vendor)}</a></b> — ${x.status === "shipped" ? "🚚 Shipped" : "📦 Packed"}<div class="muted" style="font-size:14px">${x.items.map(esc).join(", ")}</div>${x.tracking_no ? `<div style="font-size:14px">${esc(x.courier || "Courier")} · Tracking no. <b>${esc(x.tracking_no)}</b></div>` : ""}</div>`).join("")}</div>` : ""}
         <div class="box"><h2>Items</h2>${o.items.map((i) => `<div class="citem"><img src="${esc(i.image)}" alt=""><div><div class="ci-name">${esc(i.name)}</div>${i.vendor ? `<div class="muted" style="font-size:13px">Sold by ${esc(i.vendor)}</div>` : ""}
           <div style="font-size:14px;color:var(--ink-2)">${i.qty} × ${fmt.inr(i.unit_price)} = <b>${fmt.inr(i.line_total)}</b></div></div></div>`).join("")}</div>
       </div>
