@@ -199,6 +199,8 @@ def log_search(query, results, day):
 # Files are kept in the database so they survive on cloud hosts whose disks are wiped on restart.
 # The local uploads/ folder is only a cache.
 def save_file(rel_path, mime, data):
+    from .images import optimize
+    data, mime = optimize(rel_path, mime, data)
     db = get_db()
     if db.one("SELECT id FROM files WHERE path=?", (rel_path,)):
         db.run("UPDATE files SET mime=?, data=? WHERE path=?", (mime, data, rel_path))
