@@ -59,6 +59,12 @@ def admin_page(request):
     return FileResponse(config.STATIC_DIR / "admin" / "index.html", headers={"Cache-Control": "no-cache"})
 
 
+def _static_file(path, mime, cache="no-cache"):
+    async def handler(request):
+        return FileResponse(config.STATIC_DIR / path, media_type=mime, headers={"Cache-Control": cache})
+    return handler
+
+
 def vendor_page(request):
     return FileResponse(config.STATIC_DIR / "vendor" / "index.html", headers={"Cache-Control": "no-cache"})
 
@@ -174,6 +180,9 @@ routes = [
     Route("/admin", admin_page),
     Route("/admin/", admin_page),
     Route("/vendor", vendor_page),
+    Route("/manifest.webmanifest", _static_file("store/manifest.webmanifest", "application/manifest+json")),
+    Route("/vendor.webmanifest", _static_file("vendor/manifest.webmanifest", "application/manifest+json")),
+    Route("/sw.js", _static_file("store/sw.js", "text/javascript")),
     Route("/vendor/", vendor_page),
     Route("/health", health),
     Route("/api/payments/razorpay/webhook", razorpay_webhook, methods=["POST"]),
