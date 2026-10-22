@@ -621,6 +621,44 @@ class Acceptance(unittest.TestCase):
             self.assertEqual(self.owner.get(f"/api/admin/vendors/{vid}/ledger").json()["summary"]["due_now"], 1800.0)
             self.owner.post(f"/api/admin/vendors/{vid}/payouts", {"method": "upi", "amount": 1800, "reference": "U9"}, expect=200)
 
+    def test_25_new_vendor_empty_dashboard(self):
+        import secrets as _s
+        em = f"n{_s.token_hex(3)}@example.com"
+        self.owner.post("/api/admin/vendors", {"business_name": "Fresh Traders", "contact_name": "Owner Person", "email": em, "password": "Vendor@12345", "commission_pct": 10}, expect=200)
+        V = Client(); V.login(em, "Vendor@12345")
+        # no products, no orders yet
+        for path in ("/api/vendor/overview", "/api/vendor/earnings", "/api/vendor/orders?filter=to_ship", "/api/vendor/orders?filter=returns", "/api/vendor/products",
+                     "/api/vendor/item-returns", "/api/vendor/shop", "/api/vendor/payout-details", "/api/vendor/report?kind=sales", "/api/vendor/report?kind=earnings", "/api/vendor/report?kind=products"):
+            V.get(path, expect=200)
+        pid = V.post("/api/vendor/products", {"name": "Fresh Item", "category_id": self.cat["id"], "selling_price": 100, "stock": 5}, expect=200).json()["id"]
+        V.post(f"/api/vendor/products/{pid}/images", files={"files": ("a.png", PNG, "image/png")}, expect=200)
+        for path in ("/api/vendor/overview", "/api/vendor/earnings", "/api/vendor/products", "/api/vendor/report?kind=sales", "/api/vendor/report?kind=earnings", "/api/vendor/report?kind=products"):
+            V.get(path, expect=200)
+        self.owner.get("/api/admin/vendors", expect=200); self.owner.get("/api/admin/marketplace-summary", expect=200)
+        self.owner.get("/api/admin/vendor-products?approval=pending", expect=200)
+
+    def test_26_photos_are_shrunk_and_storage_report(self):
+        import io
+        from PIL import Image
+        import random
+        random.seed(1)
+        im = Image.frombytes("RGB", (3000, 2000), bytes(random.getrandbits(8) for _ in range(3000 * 2000 * 3)))
+        buf = io.BytesIO(); im.save(buf, "JPEG", quality=95); big = buf.getvalue()
+        self.assertGreater(len(big), 3 * 1024 * 1024)
+        p = self.new_product(stock=3)
+        r = self.owner.call("POST", f"/api/admin/products/{p['id']}/images", files={"files": ("big.jpg", big, "image/jpeg")}, expect=200).json()
+        url = (r.get("images") or r.get("items") or [{}])[-1].get("url") if isinstance(r, dict) else None
+        st = self.owner.get("/api/admin/storage").json()
+        self.assertGreater(st["used"], 0); self.assertTrue(any(f["folder"] == "products" for f in st["folders"]))
+        self.owner.post("/api/admin/storage/shrink", {}, expect=200)
+        prod = self.owner.get(f"/api/admin/products/{p['id']}").json()
+        img = prod["images"][-1]["url"] if prod.get("images") else None
+        self.assertTrue(img)
+        got = requests.get(BASE + img); self.assertEqual(got.status_code, 200)
+        w, h = Image.open(io.BytesIO(got.content)).size
+        self.assertLessEqual(max(w, h), 1200); self.assertLess(len(got.content), 1.5 * 1024 * 1024)
+        Client().get("/api/admin/storage", expect=401)
+
     def test_22_vendor_shop_page(self):
         import secrets as _s, base64
         png = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==")
