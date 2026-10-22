@@ -1,8 +1,7 @@
 """Owner tools to watch and save database storage (Neon free plan = 1 GB)."""
 from .. import config
 from ..db import IS_PG, get_db
-from ..services.images import optimize
-from ..web import api
+from ..web import ApiError, api
 
 LIMIT = 1024 * 1024 * 1024  # Neon free plan
 
@@ -31,6 +30,10 @@ def storage(ctx):
 @api("POST", "/api/admin/storage/shrink", auth="owner")
 def storage_shrink(ctx):
     """Make photos that were uploaded earlier smaller (does a batch at a time)."""
+    try:
+        from ..services.images import optimize
+    except ImportError:
+        raise ApiError(500, "The photo-shrinking file (app/services/images.py) is missing on the server. Upload it to the app/services folder.")
     db = get_db()
     rows = db.all("SELECT id, path, mime FROM files WHERE mime IN ('image/jpeg','image/png','image/webp') AND LENGTH(data) > ? ORDER BY LENGTH(data) DESC LIMIT 15", (400 * 1024,))
     saved = done = 0
