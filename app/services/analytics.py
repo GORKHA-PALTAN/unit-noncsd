@@ -428,11 +428,63 @@ def recommendations(rows, groups, categories, by_weekday, med_conv, lead):
     return sorted(recs, key=lambda x: order.get(x["severity"], 9))
 
 
-# ------------------------------------------------------------------ optional LLM narrative
+# ------------------------------------------------------------------ narrative (free built-in, optional LLM)
+def _inr(n):
+    return "₹" + format(int(round(n or 0)), ",")
+
+
+def builtin_narrative(data):
+    """A short plain-language briefing written directly from the computed figures. No outside service, no key."""
+    t, f, g = data["totals"], data["funnel"], data["groups"]
+    pts = []
+    if not t.get("units_30") and not t.get("units_prev_30"):
+        return "• There are no recorded sales in the last 60 days yet, so there is nothing to summarise. Once orders start coming in, this briefing fills itself in."
+    r30, r60 = t.get("revenue_30") or 0, t.get("revenue_prev_30") or 0
+    if r60 > 0:
+        ch = (r30 - r60) / r60 * 100
+        pts.append(f"• Sales in the last 30 days: {_inr(r30)} from {t['units_30']} items, "
+                   f"{'up' if ch >= 0 else 'down'} {abs(ch):.0f}% on the 30 days before ({_inr(r60)}).")
+    else:
+        pts.append(f"• Sales in the last 30 days: {_inr(r30)} from {t['units_30']} items. There is no earlier period to compare with yet.")
+    cats = [c for c in data.get("categories", []) if c.get("revenue_30")]
+    if cats:
+        top = max(cats, key=lambda c: c["revenue_30"])
+        line = f"• Best category: {top['name']} ({_inr(top['revenue_30'])})."
+        grow = [c for c in cats if c.get("growth_pct") is not None and c["units_30"] >= 5]
+        if grow:
+            up = max(grow, key=lambda c: c["growth_pct"]); dn = min(grow, key=lambda c: c["growth_pct"])
+            if up["growth_pct"] > 10:
+                line += f" Fastest growing: {up['name']} (+{up['growth_pct']:.0f}% in units)."
+            if dn["growth_pct"] < -10:
+                line += f" Falling: {dn['name']} ({dn['growth_pct']:.0f}%)."
+        pts.append(line)
+    bs = g.get("best_sellers") or []
+    if bs:
+        pts.append("• Top sellers: " + "; ".join(f"{p['name']} ({p['units_30']} sold)" for p in bs[:3]) + ".")
+    out = [p for p in (g.get("restock_soon") or []) if (p.get("available") or 0) <= 0 and (p.get("units_30") or 0) > 0]
+    low = [p for p in (g.get("restock_soon") or []) if (p.get("available") or 0) > 0]
+    if out or low:
+        txt = "• Stock: "
+        if out:
+            txt += f"{len(out)} selling item(s) are out of stock — " + ", ".join(p["name"] for p in out[:3]) + (" and more" if len(out) > 3 else "") + ". Restock these first. "
+        if low:
+            txt += f"{len(low)} more will run low soon."
+        pts.append(txt.strip())
+    slow = g.get("low_sales") or []
+    over = g.get("overstock_risk") or []
+    if slow or over:
+        pts.append(f"• Slow movers: {len(slow)} item(s) had no sales in the last 30 days and {len(over)} may be overstocked. Consider a discount, a better photo or a banner for them.")
+    if f.get("views_30"):
+        pts.append(f"• Of {f['views_30']:,} product views, {f['view_to_cart_pct']}% were added to the cart and {f['view_to_order_pct']}% became orders.")
+    zr = data.get("zero_result_searches") or []
+    if zr:
+        pts.append("• Customers searched for things you don't list: " + ", ".join(f"“{s['query']}” ({s['n']}×)" for s in zr[:3]) + ". Think about adding them.")
+    return "\n".join(pts[:7])
+
+
 def ai_narrative(data):
     if not config.ANTHROPIC_API_KEY:
-        return {"configured": False, "text": None,
-                "message": "AI narrative is not configured (set ANTHROPIC_API_KEY). The statistical insights above are fully computed from your data."}
+        return {"configured": False, "builtin": True, "text": builtin_narrative(data)}
     compact = {
         "totals": data["totals"], "funnel": data["funnel"], "categories": data["categories"][:8],
         "recommendations": [{"message": r["message"], "evidence": r["evidence"]} for r in data["recommendations"][:15]],
