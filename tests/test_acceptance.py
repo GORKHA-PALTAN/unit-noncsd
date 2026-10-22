@@ -659,6 +659,11 @@ class Acceptance(unittest.TestCase):
         self.assertLessEqual(max(w, h), 1200); self.assertLess(len(got.content), 1.5 * 1024 * 1024)
         Client().get("/api/admin/storage", expect=401)
 
+    def test_27_free_narrative(self):
+        r = self.owner.post("/api/admin/analytics/narrative", expect=200).json()
+        self.assertTrue(r["text"]); self.assertIn("Sales in the last 30 days", r["text"]); self.assertTrue(r.get("builtin"))
+        Client().post("/api/admin/analytics/narrative", expect=401)
+
     def test_22_vendor_shop_page(self):
         import secrets as _s, base64
         png = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==")
