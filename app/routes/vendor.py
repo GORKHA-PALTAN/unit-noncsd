@@ -673,9 +673,9 @@ def vendor_shop_logo(ctx):
     if f is None or not hasattr(f, "file"):
         raise ApiError(400, "Choose a picture first.")
     f.file.seek(0)
-    data = f.file.read(config.MAX_UPLOAD_BYTES + 1)
-    if len(data) > config.MAX_UPLOAD_BYTES:
-        raise ApiError(400, "Picture is larger than 5 MB.")
+    data = f.file.read(config.MAX_IMAGE_BYTES + 1)
+    if len(data) > config.MAX_IMAGE_BYTES:
+        raise ApiError(400, "Picture is larger than 15 MB.")
     ext = _sniff(data)
     if not ext:
         raise ApiError(400, "Only JPG, PNG, WEBP or GIF pictures are allowed.")
