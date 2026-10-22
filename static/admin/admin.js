@@ -894,7 +894,7 @@
         <div class="card c7"><div class="card-h"><div><h2>Recommendations</h2><div class="sub">Generated from your stored data — each shows the evidence behind it</div></div></div>
           <div id="recos">${d.recommendations.length ? d.recommendations.map((r, ri) => `<div class="reco" ${ri >= 8 ? "data-more hidden" : ""}><div class="sev">${{ high: '<span class="pill bad">Act now</span>', medium: '<span class="pill warn">Review</span>', info: '<span class="pill info">Insight</span>', low: '<span class="pill">Watch</span>' }[r.severity]}</div>
             <div><div>${esc(r.message)}</div><div class="ev">Evidence: ${esc(r.evidence)}</div></div></div>`).join("") + (d.recommendations.length > 8 ? `<button class="btn btn-sm" id="more-recos" style="margin-top:8px">Show all ${d.recommendations.length} recommendations</button>` : "") : `<div class="empty-sm">Not enough data for recommendations yet.</div>`}</div>
-          <div style="margin-top:12px;border-top:1px solid var(--line);padding-top:12px"><div class="card-h"><h2>AI narrative</h2><button class="btn btn-sm" id="narr">${d.ai_configured ? "Generate briefing" : "About AI narrative"}</button></div><div id="narr-out" class="sub">${d.ai_configured ? "Uses only the figures above." : "Optional: connect an AI model (ANTHROPIC_API_KEY) for a written briefing. The statistics work without it."}</div></div></div>
+          <div style="margin-top:12px;border-top:1px solid var(--line);padding-top:12px"><div class="card-h"><h2>AI narrative</h2><button class="btn btn-sm" id="narr">Generate briefing</button></div><div id="narr-out" class="sub">A short written summary of the figures above. Free — it is written by the store itself from your data.</div></div></div>
         <div class="card c5"><h2>Category demand</h2><div class="sub">Units, last 30 days vs previous 30</div><div id="ch-catd"></div></div>
         <div class="card c12"><div class="card-h"><div><h2>Sales forecast</h2><div class="sub">Solid = recorded sales · dashed = estimate with likely range (shaded)</div></div>
           <div class="toolbar" style="margin:0"><select id="fscope"><option value="all">Whole store</option><optgroup label="Category">${cats.filter((c) => !c.parent_id).map((c) => `<option value="category:${c.id}">${esc(c.name)}</option>`).join("")}</optgroup><optgroup label="Product">${d.products.slice().sort((a, b) => a.name.localeCompare(b.name)).map((p) => `<option value="product:${p.id}">${esc(p.name)}</option>`).join("")}</optgroup></select>
@@ -950,7 +950,7 @@
     el.querySelector("#narr").onclick = async (e) => {
       const out = el.querySelector("#narr-out");
       e.target.disabled = true; out.innerHTML = `<span class="spin"></span> Working…`;
-      try { const r = await api("POST", "/api/admin/analytics/narrative"); out.innerHTML = r.text ? `<div style="white-space:pre-line;color:var(--ink)">${esc(r.text)}</div><div class="est-note">AI-written summary of the computed figures above. Verify before acting.</div>` : esc(r.message); }
+      try { const r = await api("POST", "/api/admin/analytics/narrative"); out.innerHTML = r.text ? `<div style="white-space:pre-line;color:var(--ink)">${esc(r.text)}</div><div class="est-note">${r.builtin ? "Written automatically from your store's figures. Numbers come straight from your data." : "AI-written summary of the computed figures above. Verify before acting."}</div>` : esc(r.message); }
       catch (ex) { out.textContent = ex.message; }
       e.target.disabled = false;
     };
