@@ -714,7 +714,7 @@
         <div class="form-sec"><h3>Specifications</h3><div id="specs"></div><button type="button" class="btn btn-sm" id="addspec">+ Add specification</button></div>
         ${edit ? `<div style="display:flex;gap:10px;margin-top:18px"><button class="btn btn-primary" id="psave">${id ? "Save changes" : "Create product"}</button><a class="btn" href="#/products">Cancel</a></div>` : ""}
       </form>
-      <div><div class="card" style="margin-bottom:14px"><h2>Images</h2><div class="sub">JPG, PNG, WEBP or GIF up to 5 MB each, max 8. The first image is the main photo.</div>
+      <div><div class="card" style="margin-bottom:14px"><h2>Images</h2><div class="sub">JPG, PNG, WEBP or GIF up to 15 MB each, max 8. The first image is the main photo.</div>
         ${id ? `<div class="img-grid" id="imgs"></div>` : `<div class="empty-sm">Save the product first, then add images.</div>`}</div>
         ${id ? `<div class="card"><h2>Recent stock movements</h2>${p.movements.length ? `<table class="tbl"><tbody>${p.movements.slice(0, 12).map((m) => `<tr><td>${esc(m.type.replace(/_/g, " "))}<div class="muted">${fmt.datetime(m.created_at)}${m.order_no ? " · " + esc(m.order_no) : ""}</div></td><td class="num">${m.qty > 0 && !["sold", "reserved", "damaged", "damage_cleared"].includes(m.type) ? "+" : m.type === "adjustment" ? "" : "−"}${Math.abs(m.qty)}</td><td class="num muted">→ ${m.physical_after}</td></tr>`).join("")}</tbody></table>` : `<div class="empty-sm">No movements.</div>`}</div>` : ""}
       </div></div>`;
@@ -801,7 +801,7 @@
     };
     const photoDlg = (c) => modal({ title: "Category photo · " + c.name,
       body: `<div style="text-align:center;margin-bottom:12px">${c.image ? `<img src="${esc(c.image)}" alt="" style="max-width:100%;max-height:220px;border-radius:12px">` : `<p class="muted" style="margin:0">No photo chosen yet. The store shows the first product's picture.</p>`}</div>
-        <label class="fld"><span>Choose a photo (JPG, PNG or WEBP, up to 5 MB)</span><input type="file" id="cpf" accept="image/*"></label>
+        <label class="fld"><span>Choose a photo (JPG, PNG or WEBP, up to 15 MB)</span><input type="file" id="cpf" accept="image/*"></label>
         <p class="muted" style="font-size:13px;margin:6px 0 0">Tip: a square photo looks best on the store.</p>`,
       actions: [{ label: "Close", cls: "btn-ghost" },
         ...(c.image ? [{ label: "Remove photo", cls: "", handler: async () => {
@@ -1133,7 +1133,7 @@
     el.querySelectorAll("[data-bp]").forEach((bt) => (bt.onclick = () => {
       const x = b.items.find((y) => y.id == bt.dataset.bp);
       modal({ title: "Banner photo · " + x.title, body: `<div style="text-align:center;margin-bottom:12px">${x.image_url ? `<img src="${esc(x.image_url)}" alt="" style="max-width:100%;max-height:220px;border-radius:12px">` : `<p class="muted" style="margin:0">No photo chosen. The store picks one automatically.</p>`}</div>
-        <label class="fld"><span>Choose a photo (JPG, PNG or WEBP, up to 5 MB)</span><input type="file" id="bph" accept="image/*"></label>
+        <label class="fld"><span>Choose a photo (JPG, PNG or WEBP, up to 15 MB)</span><input type="file" id="bph" accept="image/*"></label>
         <p class="muted" style="font-size:13px;margin:6px 0 0">Tip: a square photo looks best.</p>`,
         actions: [{ label: "Close", cls: "btn-ghost" },
           ...(x.image_url ? [{ label: "Remove photo", cls: "", handler: async () => {
@@ -1228,6 +1228,7 @@
     const n = (k, l, extra = "") => `<label class="fld"><span>${l}</span><input name="${k}" type="number" value="${esc(s[k])}" ${extra}></label>`;
     const b = (k, l) => `<label class="chk"><input type="checkbox" name="${k}" ${s[k] ? "checked" : ""}> ${l}</label>`;
     el.innerHTML = `<form id="sf"><div class="cards">
+      <div class="card c12" id="stg"></div>
       <div class="card c6"><h2>Store</h2><div class="sub">Shown to customers</div>${t("store_name", "Store name")}${t("tagline", "Tagline")}<div class="row2">${t("support_email", "Support email")}${t("support_phone", "Support phone")}</div></div>
       <div class="card c6"><h2>Payments</h2><div class="sub">Secret keys live in the server's .env file — never here</div>
         ${b("cod_enabled", "Cash on Delivery")}${n("cod_max_amount", "COD maximum order value (₹)")}
@@ -1265,6 +1266,29 @@
       } catch (ex) { out.textContent = "❌ " + ex.message; }
       out.hidden = false; btn.disabled = false; btn.textContent = "Send test email";
     };
+    const mb = (n) => (n / 1048576).toFixed(n < 10485760 ? 1 : 0) + " MB";
+    const stg = async () => {
+      try {
+        const u = await api("GET", "/api/admin/storage"), pct = Math.min(100, Math.round((u.used / u.limit) * 100));
+        el.querySelector("#stg").innerHTML = `<h2>Storage (free database: 1 GB)</h2><div class="sub">Photos and videos are kept in your database. New photos are shrunk automatically.</div>
+          <div style="background:#e8ebf0;border-radius:8px;height:14px;overflow:hidden;margin:10px 0"><div style="width:${pct}%;height:100%;background:${pct > 80 ? "#c62828" : pct > 60 ? "#f9a825" : "#1f8f8a"}"></div></div>
+          <div><b>${mb(u.used)}</b> used of ${mb(u.limit)} (${pct}%) · ${u.file_count} files${u.folders.length ? " · " + u.folders.map((f) => `${esc(f.folder)}: ${mb(f.bytes)}`).join(", ") : ""}</div>
+          ${u.big_images ? `<p style="margin:10px 0 6px"><b>${u.big_images}</b> older photo(s) are still large.</p><button class="btn btn-primary btn-sm" type="button" id="shr">Shrink old photos</button> <span class="muted" id="shm"></span>` : `<p class="muted" style="margin-top:8px">All photos are already small. 👍</p>`}`;
+        const b = el.querySelector("#shr");
+        if (b) b.onclick = async () => {
+          b.disabled = true; let total = 0;
+          try {
+            for (let i = 0; i < 60; i++) {
+              const r = await api("POST", "/api/admin/storage/shrink", {}); total += r.saved;
+              el.querySelector("#shm").textContent = `Saved ${mb(total)} so far…`;
+              if (!r.left || r.stuck || !r.done) break;
+            }
+            toast("Saved " + mb(total)); stg();
+          } catch (e) { toast(e.message, "err"); b.disabled = false; }
+        };
+      } catch (e) { /* storage card is optional */ }
+    };
+    stg();
     el.querySelector("#sf").onsubmit = async (e) => {
       e.preventDefault();
       try { await api("PUT", "/api/admin/settings", { settings: formData(e.target) }); toast("Settings saved"); } catch (ex) { toast(ex.message, "err"); }
