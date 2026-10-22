@@ -658,11 +658,21 @@ class Acceptance(unittest.TestCase):
         w, h = Image.open(io.BytesIO(got.content)).size
         self.assertLessEqual(max(w, h), 1200); self.assertLess(len(got.content), 1.5 * 1024 * 1024)
         Client().get("/api/admin/storage", expect=401)
+        c = self.owner.post("/api/admin/storage/compact", {}, expect=200).json()
+        self.assertLessEqual(c["after"], c["before"])
+        Client().post("/api/admin/storage/compact", {}, expect=401)
 
     def test_27_free_narrative(self):
         r = self.owner.post("/api/admin/analytics/narrative", expect=200).json()
         self.assertTrue(r["text"]); self.assertIn("Sales in the last 30 days", r["text"]); self.assertTrue(r.get("builtin"))
         Client().post("/api/admin/analytics/narrative", expect=401)
+
+    def test_28_installable_app_files(self):
+        for path, kind in (("/manifest.webmanifest", "manifest"), ("/vendor.webmanifest", "manifest"), ("/sw.js", "javascript"), ("/static/common/pwa-512.png", "png"), ("/static/common/offline.html", "html")):
+            r = requests.get(BASE + path); self.assertEqual(r.status_code, 200, path); self.assertIn(kind, r.headers["content-type"] + path)
+        m = requests.get(BASE + "/manifest.webmanifest").json()
+        self.assertEqual(m["display"], "standalone"); self.assertTrue(any(i["purpose"] == "maskable" for i in m["icons"]))
+        self.assertIn('rel="manifest"', requests.get(BASE + "/").text)
 
     def test_22_vendor_shop_page(self):
         import secrets as _s, base64
