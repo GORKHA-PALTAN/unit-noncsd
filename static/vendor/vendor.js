@@ -144,7 +144,7 @@
     el.innerHTML = `<h2 class="vh">My shop page</h2><div class="vcardbox"><p class="muted">Customers can open a page with your name, picture and all your live products. Share this link with them:</p>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px"><input class="inp" readonly value="${esc(link)}" style="flex:1;min-width:220px"><button class="btn btn-sm" id="cp">Copy link</button><a class="btn btn-sm" href="${esc(link)}" target="_blank" rel="noopener">View my shop ↗</a></div>
       <div style="display:flex;gap:14px;align-items:center;margin-bottom:12px">${d.logo ? `<img src="${esc(d.logo)}" alt="" style="width:72px;height:72px;border-radius:50%;object-fit:cover">` : `<div class="noimg" style="width:72px;height:72px;border-radius:50%">No picture</div>`}
-        <label class="fld" style="margin:0;flex:1"><span>Shop picture / logo (JPG, PNG or WEBP, up to 5 MB)</span><input type="file" id="lg" accept="image/*"></label><button class="btn btn-sm" id="lgu">Upload</button></div>
+        <label class="fld" style="margin:0;flex:1"><span>Shop picture / logo (JPG, PNG or WEBP, up to 15 MB)</span><input type="file" id="lg" accept="image/*"></label><button class="btn btn-sm" id="lgu">Upload</button></div>
       <label class="fld"><span>About your shop (shown to customers)</span><textarea id="ab" rows="4" maxlength="600">${esc(d.about)}</textarea></label><button class="btn btn-primary" id="abs">Save</button></div>`;
     el.querySelector("#cp").onclick = () => { navigator.clipboard?.writeText(link); toast("Link copied"); };
     el.querySelector("#abs").onclick = async () => { try { await api("PUT", "/api/vendor/shop", { about: el.querySelector("#ab").value }); toast("Saved"); } catch (e) { toast(e.message, "err"); } };
@@ -221,7 +221,7 @@
     modal({ title: "Photos · " + p.name, onOpen: (m) => {
       m.querySelectorAll("[data-di]").forEach((b) => (b.onclick = async () => { try { await api("DELETE", "/api/vendor/images/" + b.dataset.di); toast("Photo removed"); b.closest("div").remove(); render(); } catch (e) { toast(e.message, "err"); } }));
     }, body: `<div class="vimgs">${(p.images || []).map((i) => `<div><img src="${esc(i.url)}" alt=""><button type="button" data-di="${i.id}" aria-label="Remove photo">×</button></div>`).join("") || `<p class="muted">No photos yet.</p>`}</div>
-      <label class="fld"><span>Add photos (JPG, PNG or WEBP, up to 5 MB each, max 8)</span><input type="file" id="pf" accept="image/*" multiple></label>
+      <label class="fld"><span>Add photos (JPG, PNG or WEBP, up to 15 MB each, max 8)</span><input type="file" id="pf" accept="image/*" multiple></label>
       <p class="muted" style="font-size:13px">Clear, bright photos on a plain background sell best.</p>`,
       actions: [{ label: "Close", cls: "btn-ghost" }, { label: "Upload", cls: "btn-primary", handler: async (m) => {
         const files = [...m.querySelector("#pf").files];
