@@ -101,7 +101,8 @@ SMTP_FROM = env("SMTP_FROM")
 
 UPLOAD_DIR = BASE_DIR / "uploads"
 STATIC_DIR = BASE_DIR / "static"
-MAX_UPLOAD_BYTES = 5 * 1024 * 1024
+MAX_UPLOAD_BYTES = 5 * 1024 * 1024   # videos / audio
+MAX_IMAGE_BYTES = 15 * 1024 * 1024    # photos (they are shrunk automatically after upload)
 
 
 def razorpay_configured():
