@@ -36,7 +36,7 @@ def category_tree(db, only_active=True):
     return roots
 
 
-@api("GET", "/api/meta")
+@api("GET", "/api/meta", cache=60)
 def meta(ctx):
     db = get_db()
     s = get_settings()
@@ -60,7 +60,7 @@ def meta(ctx):
     }
 
 
-@api("GET", "/api/home")
+@api("GET", "/api/home", cache=45)
 def home(ctx):
     db = get_db()
     dept = ctx.q("dept")
@@ -132,7 +132,7 @@ SORTS = {
 }
 
 
-@api("GET", "/api/products")
+@api("GET", "/api/products", cache=30)
 def list_products(ctx):
     db = get_db()
     where, params = [f"p.status IN {VISIBLE}"], []
