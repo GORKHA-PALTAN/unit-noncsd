@@ -1272,8 +1272,37 @@
         const u = await api("GET", "/api/admin/storage"), pct = Math.min(100, Math.round((u.used / u.limit) * 100));
         el.querySelector("#stg").innerHTML = `<h2>Storage (free database: 1 GB)</h2><div class="sub">Photos and videos are kept in your database. New photos are shrunk automatically.</div>
           <div style="background:#e8ebf0;border-radius:8px;height:14px;overflow:hidden;margin:10px 0"><div style="width:${pct}%;height:100%;background:${pct > 80 ? "#c62828" : pct > 60 ? "#f9a825" : "#1f8f8a"}"></div></div>
-          <div><b>${mb(u.used)}</b> used of ${mb(u.limit)} (${pct}%) · ${u.file_count} files${u.folders.length ? " · " + u.folders.map((f) => `${esc(f.folder)}: ${mb(f.bytes)}`).join(", ") : ""}</div>
-          ${u.big_images ? `<p style="margin:10px 0 6px"><b>${u.big_images}</b> older photo(s) are still large.</p><button class="btn btn-primary btn-sm" type="button" id="shr">Shrink old photos</button> <span class="muted" id="shm"></span>` : `<p class="muted" style="margin-top:8px">All photos are already small. 👍</p>`}`;
+          <div><b>${mb(u.used)}</b> used of ${mb(u.limit)} (${pct}%) · photos &amp; videos now: <b>${mb(u.files)}</b> (${u.file_count} files)${u.folders.length ? " · " + u.folders.map((f) => `${esc(f.folder)}: ${mb(f.bytes)}`).join(", ") : ""}</div>
+          ${u.is_pg && u.used - u.files > 25 * 1048576 ? `<p style="margin:10px 0 6px">The database still holds about <b>${mb(u.used - u.files)}</b> of old copies from before shrinking. Click below to give that space back.</p><button class="btn btn-primary btn-sm" type="button" id="cmp">Free up space</button> <span class="muted" id="cmm">Takes up to a minute. Photos may load slowly meanwhile.</span>` : ""}
+          ${u.big_images ? `<p style="margin:10px 0 6px"><b>${u.big_images}</b> older photo(s) are still large.</p><button class="btn btn-primary btn-sm" type="button" id="shr">Shrink old photos</button> <span class="muted" id="shm"></span>` : `<p class="muted" style="margin-top:8px">All photos are already small. 👍</p>`}
+          <hr style="border:0;border-top:1px solid #e3e6ec;margin:14px 0">
+          <h3 style="margin:0 0 6px">Cloudflare R2 photo storage</h3>
+          ${u.r2.enabled ? `<div>Photos copied to R2: <b>${u.r2.copied}</b> of ${u.r2.total}. Your database copies are kept as a safety backup.</div>
+            <button class="btn btn-sm" type="button" id="r2t">Test R2</button> ${u.r2.copied < u.r2.total ? `<button class="btn btn-primary btn-sm" type="button" id="r2m">Copy my photos to R2</button>` : ""} <span class="muted" id="r2s"></span>`
+          : `<div class="muted">Not set up yet. Add the 4 R2 settings in Render (Environment) and this card will turn on.</div>`}`;
+        const r2t = el.querySelector("#r2t");
+        if (r2t) r2t.onclick = async () => {
+          r2t.disabled = true; el.querySelector("#r2s").textContent = "Testing…";
+          try { const r = await api("POST", "/api/admin/storage/r2-check", {}); el.querySelector("#r2s").textContent = (r.ok ? "✅ " : "❌ ") + r.message; } catch (e) { toast(e.message, "err"); }
+          r2t.disabled = false;
+        };
+        const r2m = el.querySelector("#r2m");
+        if (r2m) r2m.onclick = async () => {
+          r2m.disabled = true; let n = 0;
+          try {
+            for (let i = 0; i < 400; i++) {
+              const r = await api("POST", "/api/admin/storage/r2-migrate", {}); n += r.copied;
+              el.querySelector("#r2s").textContent = `Copied ${n} photos… ${r.left} left`;
+              if (!r.left || r.stuck) { if (r.stuck) toast("Some photos could not be copied. Press Test R2.", "err"); break; }
+            }
+            toast("Copied " + n + " photos to R2"); stg();
+          } catch (e) { toast(e.message, "err"); r2m.disabled = false; }
+        };
+        const cb = el.querySelector("#cmp");
+        if (cb) cb.onclick = async () => {
+          cb.disabled = true; el.querySelector("#cmm").textContent = "Working… please wait.";
+          try { const r = await api("POST", "/api/admin/storage/compact", {}); toast("Freed " + mb(r.freed)); stg(); } catch (e) { toast(e.message, "err"); cb.disabled = false; }
+        };
         const b = el.querySelector("#shr");
         if (b) b.onclick = async () => {
           b.disabled = true; let total = 0;
