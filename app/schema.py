@@ -58,12 +58,6 @@ CREATE TABLE IF NOT EXISTS vendors (
   commission_pct {REAL} NOT NULL DEFAULT 10, created_at TEXT NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS product_vendors (
-  product_id INTEGER PRIMARY KEY REFERENCES products(id) ON DELETE CASCADE, vendor_id INTEGER NOT NULL REFERENCES vendors(id),
-  approval TEXT NOT NULL DEFAULT 'pending', note TEXT, updated_at TEXT NOT NULL
-);
-CREATE INDEX IF NOT EXISTS ix_pv_vendor ON product_vendors(vendor_id);
-
 CREATE TABLE IF NOT EXISTS vendor_fulfillment (
   order_id INTEGER NOT NULL, vendor_id INTEGER NOT NULL, status TEXT NOT NULL DEFAULT 'new',
   courier TEXT, tracking_no TEXT, updated_at TEXT NOT NULL, PRIMARY KEY (order_id, vendor_id)
@@ -125,6 +119,12 @@ CREATE TABLE IF NOT EXISTS products (
 );
 CREATE INDEX IF NOT EXISTS ix_products_cat ON products(category_id);
 CREATE INDEX IF NOT EXISTS ix_products_status ON products(status);
+
+CREATE TABLE IF NOT EXISTS product_vendors (
+  product_id INTEGER PRIMARY KEY REFERENCES products(id) ON DELETE CASCADE, vendor_id INTEGER NOT NULL REFERENCES vendors(id),
+  approval TEXT NOT NULL DEFAULT 'pending', note TEXT, updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_pv_vendor ON product_vendors(vendor_id);
 
 CREATE TABLE IF NOT EXISTS product_images (
   id {PK}, product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE, url TEXT NOT NULL, sort INTEGER DEFAULT 0
@@ -248,6 +248,10 @@ CREATE TABLE IF NOT EXISTS stock_events (
 
 CREATE TABLE IF NOT EXISTS files (
   id {PK}, path TEXT UNIQUE NOT NULL, mime TEXT NOT NULL, data {BLOB} NOT NULL, created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS r2_files (
+  id {PK}, path TEXT UNIQUE NOT NULL, created_at TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS login_codes (

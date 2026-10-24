@@ -86,8 +86,11 @@ async def razorpay_webhook(request: Request):
 UPLOAD_TYPES = {".jpg": "image/jpeg", ".png": "image/png", ".gif": "image/gif", ".webp": "image/webp", ".svg": "image/svg+xml", ".mp4": "video/mp4", ".mp3": "audio/mpeg", ".m4a": "audio/mp4", ".ogg": "audio/ogg", ".wav": "audio/wav", ".webm": "video/webm"}
 
 
+PHOTO_CACHE = "public, max-age=2592000"  # photos have unique random names, so browsers may keep them 30 days
+
+
 async def uploads(request):
-    """Serve product images from the local cache, falling back to the database copy."""
+    """Serve a photo: local cache first, then Cloudflare R2 (if set up), and only then the database copy."""
     import re
     from starlette.responses import Response
     rel = request.path_params["path"]
@@ -95,19 +98,33 @@ async def uploads(request):
         return PlainTextResponse("Not found", status_code=404)
     disk = config.UPLOAD_DIR / rel
     if disk.is_file():
-        return FileResponse(disk, headers={"Cache-Control": "public, max-age=86400"})
-    from .services.common import load_file
-    found = await run_in_threadpool(load_file, rel)
+        return FileResponse(disk, headers={"Cache-Control": PHOTO_CACHE})
+    from .services.common import copy_to_r2, load_file
+    try:
+        from .services import r2
+    except ImportError:  # r2.py not uploaded yet: behave exactly as before
+        class r2:  # noqa: N801
+            enabled = staticmethod(lambda: False)
+    found = await run_in_threadpool(r2.get, rel) if r2.enabled() else None
+    from_db = False
+    if not found:
+        found = await run_in_threadpool(load_file, rel)  # the database copy (always kept as a safety net)
+        from_db = True
     if not found:
         return PlainTextResponse("Not found", status_code=404)
     mime, data = found
+    ext = "." + rel.rsplit(".", 1)[-1].lower() if "." in rel else ""
+    if mime == "application/octet-stream":
+        mime = UPLOAD_TYPES.get(ext, mime)
+    if from_db and r2.enabled():
+        await run_in_threadpool(copy_to_r2, rel, mime, data)  # first read from the database also fills R2
     try:
         disk.parent.mkdir(parents=True, exist_ok=True)
         disk.write_bytes(data)  # re-create the cache
-        return FileResponse(disk, media_type=mime, headers={"Cache-Control": "public, max-age=86400"})
+        return FileResponse(disk, media_type=mime, headers={"Cache-Control": PHOTO_CACHE})
     except OSError:
         pass
-    return Response(data, media_type=mime, headers={"Cache-Control": "public, max-age=86400"})
+    return Response(data, media_type=mime, headers={"Cache-Control": PHOTO_CACHE})
 
 
 async def not_found_api(request):

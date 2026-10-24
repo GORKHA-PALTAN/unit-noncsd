@@ -99,6 +99,13 @@ SMTP_USER = env("SMTP_USER")
 SMTP_PASSWORD = env("SMTP_PASSWORD")
 SMTP_FROM = env("SMTP_FROM")
 
+# Cloudflare R2 photo storage (optional; leave empty to keep photos only in the database)
+R2_ACCOUNT_ID = env("R2_ACCOUNT_ID")
+R2_ACCESS_KEY_ID = env("R2_ACCESS_KEY_ID")
+R2_SECRET_ACCESS_KEY = env("R2_SECRET_ACCESS_KEY")
+R2_BUCKET = env("R2_BUCKET")
+R2_ENDPOINT = env("R2_ENDPOINT")  # only for tests
+
 UPLOAD_DIR = BASE_DIR / "uploads"
 STATIC_DIR = BASE_DIR / "static"
 MAX_UPLOAD_BYTES = 5 * 1024 * 1024   # videos / audio

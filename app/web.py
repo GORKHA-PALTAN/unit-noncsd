@@ -5,6 +5,7 @@ work never blocks the event loop. The wrapper enforces authentication, role perm
 rate limits *before* the handler runs.
 """
 import json
+import time
 import traceback
 
 from starlette.concurrency import run_in_threadpool
@@ -75,8 +76,17 @@ def client_ip(request):
     return request.client.host if request.client else "unknown"
 
 
-def api(method, path, auth=None, perm=None, limit=None, multipart=False):
-    """auth: None (public) | 'user' (any signed-in) | 'customer' | 'admin' (owner/staff) | 'owner'."""
+_PAGE_CACHE = {}  # (path, query) -> (expires_at, body_bytes); only for signed-out visitors
+
+
+def clear_page_cache():
+    _PAGE_CACHE.clear()
+
+
+def api(method, path, auth=None, perm=None, limit=None, multipart=False, cache=0):
+    """auth: None (public) | 'user' (any signed-in) | 'customer' | 'admin' (owner/staff) | 'owner'.
+    cache: seconds to keep a public GET answer in memory for signed-out visitors (any change made through the
+    admin/vendor/customer API clears it at once, so edits show immediately)."""
     def deco(fn):
         async def endpoint(request: Request):
             token = request.cookies.get(SESSION_COOKIE)
@@ -90,6 +100,13 @@ def api(method, path, auth=None, perm=None, limit=None, multipart=False):
             if wait:
                 return JSONResponse({"error": f"Too many requests. Try again in {wait}s."}, status_code=429,
                                     headers={"Retry-After": str(wait)})
+
+            ckey = None
+            if cache and method == "GET" and not user:
+                ckey = (request.url.path, request.url.query)
+                hit = _PAGE_CACHE.get(ckey)
+                if hit and hit[0] > time.monotonic():
+                    return Response(hit[1], media_type="application/json", headers={"X-Cache": "hit"})
 
             # Auth / role checks
             if auth and not user:
@@ -138,6 +155,10 @@ def api(method, path, auth=None, perm=None, limit=None, multipart=False):
                 if form is not None:
                     await form.close()
             resp = result if isinstance(result, Response) else JSONResponse(result if result is not None else {"ok": True})
+            if method != "GET":
+                _PAGE_CACHE.clear()  # something changed: never show stale prices or stock
+            elif ckey and resp.status_code == 200 and len(_PAGE_CACHE) < 300:
+                _PAGE_CACHE[ckey] = (time.monotonic() + cache, bytes(resp.body))
             for name, value, max_age in ctx.set_cookies:
                 resp.set_cookie(name, value, max_age=max_age, httponly=True, samesite="lax",
                                 secure=config.COOKIE_SECURE, path="/")
