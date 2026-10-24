@@ -215,10 +215,32 @@ def save_file(rel_path, mime, data):
         target.write_bytes(data)
     except OSError:
         pass
+    copy_to_r2(rel_path, mime, data)
+
+
+def copy_to_r2(rel_path, mime, data):
+    """Keep an extra copy of the photo in Cloudflare R2 (does nothing if R2 is not set up; never raises)."""
+    try:
+        from . import r2
+        if r2.enabled() and r2.put(rel_path, data, mime):
+            db = get_db()
+            if not db.one("SELECT id FROM r2_files WHERE path=?", (rel_path,)):
+                db.insert("r2_files", {"path": rel_path, "created_at": now_iso()})
+            return True
+    except Exception:  # noqa: BLE001
+        pass
+    return False
 
 
 def delete_file(rel_path):
     get_db().run("DELETE FROM files WHERE path=?", (rel_path,))
+    try:
+        from . import r2
+        if r2.enabled():
+            r2.delete(rel_path)
+            get_db().run("DELETE FROM r2_files WHERE path=?", (rel_path,))
+    except Exception:  # noqa: BLE001
+        pass
     try:
         (config.UPLOAD_DIR / rel_path).unlink()
     except OSError:
